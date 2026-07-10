@@ -2,6 +2,7 @@
   const STYLE_ID = "lms-memo-style";
   const POPUP_ID = "lms-memo-popup-window";
   const PREVIEW_ID = "lms-memo-preview-popup";
+  const EMBED_ID = "lms-task-embed-panel";
   const BUTTON_CLASS = "lms-memo-btn";
   const HAS_TEXT_CLASS = "lms-memo-has-text";
   const storage = chrome.storage.sync;
@@ -19,6 +20,8 @@
 
   addStyle();
   addMemoButtons();
+  initClassPagePanel();
+  insertNavSettingsLink();
   observeDynamicSections();
 
   function createIcon(name, size = 16) {
@@ -99,6 +102,14 @@
         margin: 0;
         font-size: 15px;
         color: #333;
+      }
+
+      .lms-task-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
+        flex: 1;
       }
 
       .lms-task-list {
@@ -215,6 +226,15 @@
         border: none !important;
       }
 
+      #${EMBED_ID} .lms-task-list {
+        max-height: 320px;
+        border-top: none;
+      }
+
+      #${EMBED_ID} .lms-memo-popup-buttons {
+        justify-content: flex-start;
+      }
+
       .lms-memo-preview-popup {
         position: fixed;
         max-width: 260px;
@@ -305,12 +325,34 @@
           }
         }
       }
+      insertNavSettingsLink();
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true
     });
+  }
+
+  // LMS のグローバルナビ（トップ / マイページ / メール / 設定 ...）に
+  // この拡張機能の設定ページへのリンクを追加する。
+  function insertNavSettingsLink() {
+    const NAV_ITEM_ID = "lms-task-settings-item";
+    if (document.getElementById(NAV_ITEM_ID)) return;
+
+    const nav = document.querySelector("ul.nav.navbar-nav.navbar-right.gnav");
+    if (!nav) return;
+
+    const item = document.createElement("li");
+    item.id = NAV_ITEM_ID;
+
+    const link = document.createElement("a");
+    link.href = chrome.runtime.getURL("settings.html");
+    link.target = "_blank";
+    link.textContent = "タスク設定";
+
+    item.appendChild(link);
+    nav.appendChild(item);
   }
 
   // 保存形式: { subject: string, tasks: [{id, text, done}] }
@@ -351,22 +393,18 @@
     return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-  function openTaskPopup(classId, subjectName, buttonEl) {
-    hidePreviewPopup();
-
-    const oldPopup = document.getElementById(POPUP_ID);
-    if (oldPopup) oldPopup.remove();
+  // タスクの一覧・追加・編集 UI を作る共通部品。
+  // ポップアップと授業ページ埋め込みパネルの両方で使う。
+  function createTaskManager(classId, options) {
+    const subjectName = options.subjectName || "";
+    const onFormToggle = options.onFormToggle || function () {};
+    const onTasksChanged = options.onTasksChanged || function () {};
 
     let tasks = [];
-    let isFormOpen = false;
     let editingTaskId = null;
 
-    const popup = document.createElement("div");
-    popup.id = POPUP_ID;
-    popup.className = "lms-memo-popup";
-
-    const title = document.createElement("h3");
-    title.append(createIcon("task", 18), document.createTextNode(subjectName));
+    const body = document.createElement("div");
+    body.className = "lms-task-body";
 
     const listEl = document.createElement("ul");
     listEl.className = "lms-task-list";
@@ -393,24 +431,20 @@
     formButtons.append(formCancelBtn, formSaveBtn);
     form.append(formTextarea, formButtons);
 
-    const bottomButtons = document.createElement("div");
-    bottomButtons.className = "lms-memo-popup-buttons";
+    const buttonsRow = document.createElement("div");
+    buttonsRow.className = "lms-memo-popup-buttons";
 
     const addButton = document.createElement("button");
     addButton.type = "button";
     addButton.className = "lms-task-add-btn";
     addButton.append(createIcon("add", 14), document.createTextNode("新しいタスク"));
 
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.append(createIcon("close", 14), document.createTextNode("閉じる"));
-
-    bottomButtons.append(addButton, closeButton);
-    popup.append(title, listEl, form, bottomButtons);
-    document.body.appendChild(popup);
+    buttonsRow.appendChild(addButton);
+    body.append(listEl, form, buttonsRow);
 
     storage.get([classId], (result) => {
-      tasks = normalizeEntry(result[classId]).tasks;
+      const entry = normalizeEntry(result[classId]);
+      tasks = entry.tasks;
       renderList();
     });
 
@@ -471,7 +505,7 @@
       editingTaskId = task ? task.id : null;
       formTextarea.value = task ? task.text : "";
       form.hidden = false;
-      isFormOpen = true;
+      onFormToggle(true);
       formTextarea.focus();
     }
 
@@ -479,12 +513,17 @@
       form.hidden = true;
       formTextarea.value = "";
       editingTaskId = null;
-      isFormOpen = false;
+      onFormToggle(false);
     }
 
     function persist() {
-      storage.set({ [classId]: { subject: subjectName, tasks } }, () => {
-        updateButtonState(buttonEl, { subject: subjectName, tasks });
+      // 保存済みの科目名がある場合は上書きしない（授業ページでは科目名が取れないことがあるため）
+      storage.get([classId], (result) => {
+        const existing = normalizeEntry(result[classId]);
+        const subject = subjectName || existing.subject;
+        storage.set({ [classId]: { subject, tasks } }, () => {
+          onTasksChanged(tasks);
+        });
       });
     }
 
@@ -512,10 +551,46 @@
       renderList();
     });
 
+    return { element: body };
+  }
+
+  function openTaskPopup(classId, subjectName, buttonEl) {
+    hidePreviewPopup();
+
+    const oldPopup = document.getElementById(POPUP_ID);
+    if (oldPopup) oldPopup.remove();
+
+    let isFormOpen = false;
+
+    const popup = document.createElement("div");
+    popup.id = POPUP_ID;
+    popup.className = "lms-memo-popup";
+
+    const title = document.createElement("h3");
+    title.append(createIcon("task", 18), document.createTextNode(subjectName));
+
+    const manager = createTaskManager(classId, {
+      subjectName,
+      onFormToggle: (open) => {
+        isFormOpen = open;
+      },
+      onTasksChanged: (tasks) => {
+        updateButtonState(buttonEl, { subject: subjectName, tasks });
+      }
+    });
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.append(createIcon("close", 14), document.createTextNode("閉じる"));
     closeButton.addEventListener("click", () => {
       document.removeEventListener("mousedown", handleOutsideClick, true);
       popup.remove();
     });
+
+    manager.element.querySelector(".lms-memo-popup-buttons").appendChild(closeButton);
+
+    popup.append(title, manager.element);
+    document.body.appendChild(popup);
 
     function handleOutsideClick(event) {
       if (isFormOpen) return;
@@ -529,6 +604,65 @@
     setTimeout(() => {
       document.addEventListener("mousedown", handleOutsideClick, true);
     }, 0);
+  }
+
+  // 授業詳細ページ (/lms/class/<ID>) では、ポップアップではなく
+  // .col-sm-9 のカラム内に LMS のパネルと同じ見た目でタスク管理を埋め込む。
+  function initClassPagePanel() {
+    const match = location.pathname.match(/\/lms\/class\/(\d+)/);
+    if (!match) return;
+
+    const classId = match[1];
+    insertEmbedPanel(classId);
+
+    // カラムが後から描画される場合に備えて監視する
+    if (!document.getElementById(EMBED_ID)) {
+      const observer = new MutationObserver(() => {
+        if (insertEmbedPanel(classId)) {
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
+  function insertEmbedPanel(classId) {
+    if (document.getElementById(EMBED_ID)) return true;
+
+    const column = document.querySelector(".col-sm-9.sp-padding-none");
+    if (!column) return false;
+
+    const panel = document.createElement("div");
+    panel.id = EMBED_ID;
+    panel.className = "panel panel-default sp-margin-bottom-none sp-border-bottom-none";
+
+    const heading = document.createElement("div");
+    heading.className = "panel-heading cf";
+
+    const mark = document.createElement("i");
+    mark.className = "mark";
+    heading.append(mark, createIcon("task", 15), document.createTextNode(" マイタスク"));
+
+    const bodyWrap = document.createElement("div");
+    bodyWrap.className = "panel-body";
+
+    const manager = createTaskManager(classId, {
+      // 授業ページでは科目名が確実に取れないため、保存済みの科目名を維持する
+      subjectName: ""
+    });
+
+    bodyWrap.appendChild(manager.element);
+    panel.append(heading, bodyWrap);
+
+    // 「お知らせ」等の先頭パネル群の前（メッセージ・ボタン行の直後）に挿入する
+    const anchor = column.querySelector(".div-flex-columns");
+    if (anchor) {
+      column.insertBefore(panel, anchor);
+    } else {
+      column.appendChild(panel);
+    }
+
+    return true;
   }
 
   function getSubjectName(parentSection) {

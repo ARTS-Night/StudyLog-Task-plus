@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>スタログ授業タスク管理 - 設定</title>
+  <style>
+    body {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+      font-size: 14px;
+      color: #333;
+      background: #f7f9fa;
+    }
+
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 20px;
+      margin: 0 0 20px;
+    }
+
+    .lms-icon {
+      flex: 0 0 auto;
+    }
+
+    section {
+      background: white;
+      border: 1px solid #e0e5e8;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    section h2 {
+      font-size: 15px;
+      margin: 0 0 10px;
+    }
+
+    section p {
+      font-size: 12px;
+      color: #777;
+      margin: 4px 0 10px;
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      margin-right: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      background: white;
+      color: #333;
+    }
+
+    button:hover {
+      background: #f0f3f5;
+    }
+
+    button.primary {
+      background: #4CAF50;
+      color: white;
+      border: none;
+    }
+
+    button.primary:hover {
+      background: #45a049;
+    }
+
+    button.danger {
+      background: #fff;
+      color: #d32f2f;
+      border-color: #d32f2f;
+    }
+
+    button.danger:hover {
+      background: #fdecea;
+    }
+
+    #usage {
+      font-size: 13px;
+      color: #555;
+    }
+
+    #usage b {
+      color: #2196F3;
+    }
+
+    #import-file {
+      display: none;
+    }
+
+    #status {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #323232;
+      color: white;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    #status.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <h1>
+    <svg class="lms-icon" viewBox="0 0 24 24" width="24" height="24" fill="#4CAF50"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"/></svg>
+    スタログ授業タスク管理 - 設定
+  </h1>
+
+  <section>
+    <h2>ストレージ使用量</h2>
+    <p>タスクは chrome.storage.sync に保存されます（上限 約100KB）。</p>
+    <div id="usage">読み込み中...</div>
+  </section>
+
+  <section>
+    <h2>バックアップ</h2>
+    <p>すべてのタスクを JSON ファイルとして保存・復元できます。</p>
+    <button id="btn-export" class="primary">エクスポート</button>
+    <button id="btn-import">インポート</button>
+    <input type="file" id="import-file" accept=".json,application/json">
+  </section>
+
+  <section>
+    <h2>データの整理</h2>
+    <p>不要になったタスクをまとめて削除して容量を確保できます。</p>
+    <button id="btn-clear-done">完了済みタスクをすべて削除</button>
+    <button id="btn-clear-all" class="danger">すべてのデータを削除</button>
+  </section>
+
+  <div id="status"></div>
+  <script src="settings.js"></script>
+</body>
+</html>

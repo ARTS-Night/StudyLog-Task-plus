@@ -10,6 +10,20 @@
     "default_popup": "popup.html",
     "default_title": "すべてのタスクを表示"
   },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "settings.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
   "content_scripts": [
     {
       "matches": [
