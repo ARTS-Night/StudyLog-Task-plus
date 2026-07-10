@@ -21,6 +21,48 @@
   - `chrome.storage.sync` は 1 項目あたり約 8KB、合計 100KB 程度の容量制限があるため、非常に多くのタスクは保存できない場合があります。
   - 旧バージョン（メモ機能）で保存していたテキストは、次回開いたときに 1 件のタスクとして自動的に引き継がれます。
 
+## データの保存場所
+
+この拡張機能の拡張機能 ID は `manifest.json` の `key` により **`pcjeocjjlggpfijlglmlgdiiaimooikd`** に固定されています。
+
+| データ | 保存 API | 実体の場所 |
+| --- | --- | --- |
+| タスク（同期モード時） | `chrome.storage.sync` | Chrome プロファイル内の LevelDB + Google アカウント（Chrome 同期サーバー） |
+| タスク（ローカルモード時） | `chrome.storage.local` | Chrome プロファイル内の LevelDB（この端末のみ） |
+| 保存先モード・端末名 | `chrome.storage.local` | 同上（端末ごと。同期されない） |
+| 同期チェックの「印」 | `chrome.storage.sync` | タスク（同期モード時）と同じ |
+
+Windows でのファイルの実体（プロファイルが `Default` の場合）:
+
+- sync 領域: `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Sync Extension Settings\pcjeocjjlggpfijlglmlgdiiaimooikd\`
+- local 領域: `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Local Extension Settings\pcjeocjjlggpfijlglmlgdiiaimooikd\`
+
+いずれも LevelDB 形式のためテキストエディタでは読めません。中身を確認したいときは、設定ページで F12 → Console に以下を貼り付けるのが簡単です。
+
+```js
+chrome.storage.sync.get(null, (d) => console.log(JSON.stringify(d, null, 2)))   // 同期領域
+chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  // ローカル領域
+```
+
+キーは授業 ID（例: `10054`）で、値は `{ subject: 科目名, tasks: [{id, text, done}] }` です。`__` で始まるキー（`__storage_mode__`, `__device__`, `__sync_check__`）は拡張機能の内部設定です。
+
+## 同期の条件とトラブルシューティング
+
+`chrome.storage.sync` が他のパソコンと同期されるには、**すべて**の条件を満たす必要があります。
+
+1. **両方の PC で拡張機能 ID が同じ**こと（`chrome://extensions/` で `pcjeocjjlggpfijlglmlgdiiaimooikd` になっているか確認。違う場合は `key` 入りの最新フォルダをコピーし直して再読み込み）。
+2. 両方の PC で**同じ Google アカウント**で Chrome にログインし、**同期がオン**になっていること（`chrome://settings/syncSetup`）。
+3. 「同期する内容の管理」で**「すべてを同期する」にするか、少なくとも「拡張機能」がオン**であること。
+   - 「拡張機能」のみをオンにしても反映されない例が報告されています。うまくいかない場合は一度**「すべてを同期する」に切り替えて**動作するか確認してください（拡張機能の設定データが別の項目に紐づく Chrome バージョンがあるため）。
+4. この拡張機能の設定ページで「保存先」が**「Google アカウントで同期」**になっていること（両方の PC で確認）。
+5. 学校・会社の管理アカウント（Google Workspace）では、管理者が同期を禁止している場合があります。その場合は個人アカウントのプロファイルを使ってください。
+
+確認のコツ:
+
+- 同期は即時ではなく**数十秒〜数分**かかります。同期チェックの印を残したら、もう片方の PC で **Chrome を再起動**してから設定ページを開くと反映が早まります。
+- `chrome://sync-internals` を開き、「Sync Node Browser」→「Extension settings」にこの拡張機能の ID があるかを見ると、データがサーバーに上がっているか確認できます。上がっていなければ送信側（書き込んだ PC）の問題、上がっているのに反映されなければ受信側の問題です。
+- 同期がオンでなかった期間に書き込んだデータも、同期がオンになれば数分以内にアップロードされます。されない場合は設定ページで「この端末の印を残す」を押し直して新しい書き込みを発生させてください。
+
 ## 読み込み方法
 
 1. Chrome で `chrome://extensions/` を開きます。
