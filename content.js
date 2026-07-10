@@ -1,8 +1,10 @@
 (function () {
   const STYLE_ID = "lms-memo-style";
   const POPUP_ID = "lms-memo-popup-window";
+  const PREVIEW_ID = "lms-memo-preview-popup";
   const BUTTON_CLASS = "lms-memo-btn";
   const HAS_TEXT_CLASS = "lms-memo-has-text";
+  const storage = chrome.storage.sync;
 
   addStyle();
   addMemoButtons();
@@ -88,6 +90,24 @@
         border: none;
         border-radius: 3px;
       }
+
+      .lms-memo-preview-popup {
+        position: fixed;
+        max-width: 280px;
+        max-height: 200px;
+        overflow: auto;
+        background: #fffde7;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-size: 12px;
+        color: #333;
+        white-space: pre-wrap;
+        word-break: break-word;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        z-index: 10001;
+        pointer-events: none;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -117,13 +137,21 @@
       button.className = BUTTON_CLASS;
       button.textContent = "📝 メモ";
 
-      chrome.storage.local.get([classId], (result) => {
+      storage.get([classId], (result) => {
         updateButtonState(button, result[classId] || "");
       });
 
       button.addEventListener("click", (event) => {
         event.preventDefault();
         openMemoPopup(classId, subjectName, button);
+      });
+
+      button.addEventListener("mouseenter", () => {
+        showPreviewPopup(button);
+      });
+
+      button.addEventListener("mouseleave", () => {
+        hidePreviewPopup();
       });
 
       parentSection.appendChild(button);
@@ -148,6 +176,8 @@
   }
 
   function openMemoPopup(classId, subjectName, buttonEl) {
+    hidePreviewPopup();
+
     const oldPopup = document.getElementById(POPUP_ID);
     if (oldPopup) oldPopup.remove();
 
@@ -179,14 +209,14 @@
     popup.append(title, textarea, buttons);
     document.body.appendChild(popup);
 
-    chrome.storage.local.get([classId], (result) => {
+    storage.get([classId], (result) => {
       textarea.value = result[classId] || "";
     });
 
     saveButton.addEventListener("click", () => {
       const text = textarea.value;
 
-      chrome.storage.local.set({ [classId]: text }, () => {
+      storage.set({ [classId]: text }, () => {
         updateButtonState(buttonEl, text);
         document.removeEventListener("mousedown", handleOutsideClick, true);
         popup.remove();
@@ -229,6 +259,8 @@
   }
 
   function updateButtonState(button, text) {
+    button.dataset.memoText = text;
+
     if (text.trim() !== "") {
       button.classList.add(HAS_TEXT_CLASS);
       button.textContent = "📝 メモあり";
@@ -237,5 +269,39 @@
 
     button.classList.remove(HAS_TEXT_CLASS);
     button.textContent = "📝 メモ";
+  }
+
+  function showPreviewPopup(button) {
+    const text = button.dataset.memoText || "";
+    if (text.trim() === "") return;
+
+    hidePreviewPopup();
+
+    const preview = document.createElement("div");
+    preview.id = PREVIEW_ID;
+    preview.className = "lms-memo-preview-popup";
+    preview.textContent = text;
+    document.body.appendChild(preview);
+
+    const rect = button.getBoundingClientRect();
+    const previewRect = preview.getBoundingClientRect();
+
+    let top = rect.bottom + 6;
+    if (top + previewRect.height > window.innerHeight) {
+      top = Math.max(6, rect.top - previewRect.height - 6);
+    }
+
+    let left = rect.left;
+    if (left + previewRect.width > window.innerWidth) {
+      left = Math.max(6, window.innerWidth - previewRect.width - 6);
+    }
+
+    preview.style.top = `${top}px`;
+    preview.style.left = `${left}px`;
+  }
+
+  function hidePreviewPopup() {
+    const preview = document.getElementById(PREVIEW_ID);
+    if (preview) preview.remove();
   }
 })();
