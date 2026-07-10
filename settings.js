@@ -1,5 +1,7 @@
 (function () {
   const MODE_KEY = "__storage_mode__";
+  const SYNC_CHECK_KEY = "__sync_check__";
+  const DEVICE_KEY = "__device__";
   let mode = "sync";
 
   const usageEl = document.getElementById("usage");
@@ -28,6 +30,119 @@
     });
     refreshUsage();
   });
+
+  // ---- 同期チェック ----
+  // 端末ごとの ID と名前は chrome.storage.local（同期されない領域）に保存し、
+  // 「印」は chrome.storage.sync に書き込む。他の端末の印が見えれば同期が機能している。
+  const syncCheckListEl = document.getElementById("sync-check-list");
+  let deviceInfo = null;
+
+  function getDevice(callback) {
+    if (deviceInfo) {
+      callback(deviceInfo);
+      return;
+    }
+    chrome.storage.local.get([DEVICE_KEY], (result) => {
+      if (result[DEVICE_KEY] && result[DEVICE_KEY].id) {
+        deviceInfo = result[DEVICE_KEY];
+        callback(deviceInfo);
+        return;
+      }
+      const id = `dev-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      const name = `端末 ${new Date().toLocaleDateString("ja-JP")}`;
+      deviceInfo = { id, name };
+      chrome.storage.local.set({ [DEVICE_KEY]: deviceInfo }, () => callback(deviceInfo));
+    });
+  }
+
+  function renderSyncCheck() {
+    getDevice((device) => {
+      chrome.storage.sync.get([SYNC_CHECK_KEY], (result) => {
+        const marks = result[SYNC_CHECK_KEY] || {};
+        syncCheckListEl.innerHTML = "";
+
+        const ids = Object.keys(marks);
+        if (ids.length === 0) {
+          syncCheckListEl.textContent = "まだ印がありません。下のボタンを押して最初の印を残してください。";
+          return;
+        }
+
+        ids
+          .sort((a, b) => (marks[b].time || 0) - (marks[a].time || 0))
+          .forEach((id) => {
+            const mark = marks[id];
+            const item = document.createElement("div");
+            item.className = "sync-check-item" + (id === device.id ? " this-device" : "");
+
+            const name = document.createElement("span");
+            name.className = "device-name";
+            name.textContent = mark.name || id;
+            item.appendChild(name);
+
+            if (id === device.id) {
+              const tag = document.createElement("span");
+              tag.className = "device-tag";
+              tag.textContent = "（この端末）";
+              item.appendChild(tag);
+            }
+
+            const time = document.createElement("span");
+            time.className = "device-time";
+            time.textContent = mark.time ? new Date(mark.time).toLocaleString("ja-JP") : "";
+            item.appendChild(time);
+
+            syncCheckListEl.appendChild(item);
+          });
+      });
+    });
+  }
+
+  document.getElementById("btn-sync-check").addEventListener("click", () => {
+    getDevice((device) => {
+      chrome.storage.sync.get([SYNC_CHECK_KEY], (result) => {
+        const marks = result[SYNC_CHECK_KEY] || {};
+        marks[device.id] = { name: device.name, time: Date.now() };
+        chrome.storage.sync.set({ [SYNC_CHECK_KEY]: marks }, () => {
+          if (chrome.runtime.lastError) {
+            showStatus(`書き込みに失敗しました: ${chrome.runtime.lastError.message}`);
+            return;
+          }
+          renderSyncCheck();
+          showStatus("印を残しました。他のパソコンの設定ページで確認してください");
+        });
+      });
+    });
+  });
+
+  document.getElementById("btn-sync-rename").addEventListener("click", () => {
+    getDevice((device) => {
+      const name = prompt("この端末の表示名を入力してください", device.name);
+      if (!name || name.trim() === "") return;
+
+      deviceInfo = { id: device.id, name: name.trim() };
+      chrome.storage.local.set({ [DEVICE_KEY]: deviceInfo }, () => {
+        // すでに印がある場合は名前も更新する
+        chrome.storage.sync.get([SYNC_CHECK_KEY], (result) => {
+          const marks = result[SYNC_CHECK_KEY] || {};
+          if (marks[device.id]) {
+            marks[device.id].name = deviceInfo.name;
+            chrome.storage.sync.set({ [SYNC_CHECK_KEY]: marks }, renderSyncCheck);
+          } else {
+            renderSyncCheck();
+          }
+        });
+      });
+    });
+  });
+
+  // 他の端末が印を書き込んだらリアルタイムで反映する（＝同期が動いている証拠）
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "sync" && changes[SYNC_CHECK_KEY]) {
+      renderSyncCheck();
+    }
+  });
+
+  renderSyncCheck();
 
   modeRadios.forEach((radio) => {
     radio.addEventListener("change", () => {

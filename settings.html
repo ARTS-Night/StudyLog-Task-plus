@@ -124,6 +124,41 @@
       color: #777;
     }
 
+    .sync-check-list {
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .sync-check-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border: 1px solid #e0e5e8;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+
+    .sync-check-item.this-device {
+      border-color: #4CAF50;
+      background: #f2faf2;
+    }
+
+    .sync-check-item .device-name {
+      font-weight: bold;
+    }
+
+    .sync-check-item .device-tag {
+      font-size: 11px;
+      color: #4CAF50;
+    }
+
+    .sync-check-item .device-time {
+      margin-left: auto;
+      color: #777;
+      font-size: 12px;
+    }
+
     #status {
       position: fixed;
       bottom: 16px;
@@ -173,6 +208,17 @@
     <h2>ストレージ使用量</h2>
     <p>現在の保存先の使用量です。</p>
     <div id="usage">読み込み中...</div>
+  </section>
+
+  <section>
+    <h2>同期チェック</h2>
+    <p>
+      各パソコンで「この端末の印を残す」を押すと、その記録が Google アカウント経由で同期されます。<br>
+      別のパソコンの印がここに表示されていれば、同期は正常に動いています。このページを開いたままでも、他の端末からの更新はリアルタイムで反映されます。
+    </p>
+    <div id="sync-check-list" class="sync-check-list">読み込み中...</div>
+    <button id="btn-sync-check" class="primary">この端末の印を残す</button>
+    <button id="btn-sync-rename">端末名を変更</button>
   </section>
 
   <section>
