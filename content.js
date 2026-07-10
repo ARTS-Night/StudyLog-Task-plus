@@ -273,20 +273,27 @@
     document.head.appendChild(style);
   }
 
-  function addMemoButtons(root = document) {
-    const ivySections = [];
+  // カレンダー上の授業は LMS 本来の DOM（.div-class-name 内の授業リンク）から検出する。
+  // classId はリンク先 URL（/lms/class/<classId>/...）から取り出す。
+  const CLASS_LINK_SELECTOR = '.div-class-name a.blue[href*="/lms/class/"]';
 
-    if (root.nodeType === Node.ELEMENT_NODE && root.matches(".ivy-section[data-class-id]")) {
-      ivySections.push(root);
+  function addMemoButtons(root = document) {
+    const classLinks = [];
+
+    if (root.nodeType === Node.ELEMENT_NODE && root.matches(CLASS_LINK_SELECTOR)) {
+      classLinks.push(root);
     }
 
-    root.querySelectorAll(".ivy-section[data-class-id]").forEach((ivySection) => {
-      ivySections.push(ivySection);
-    });
+    if (root.querySelectorAll) {
+      root.querySelectorAll(CLASS_LINK_SELECTOR).forEach((link) => {
+        classLinks.push(link);
+      });
+    }
 
-    ivySections.forEach((ivySection) => {
-      const classId = ivySection.getAttribute("data-class-id");
-      const parentSection = ivySection.closest("section");
+    classLinks.forEach((link) => {
+      const match = link.getAttribute("href").match(/\/lms\/class\/(\d+)/);
+      const classId = match ? match[1] : null;
+      const parentSection = link.closest("section");
       const subjectName = getSubjectName(parentSection);
 
       if (!classId || !parentSection || parentSection.querySelector(`:scope > .${BUTTON_CLASS}`)) {
@@ -317,6 +324,25 @@
 
       parentSection.appendChild(button);
     });
+
+    keepButtonsBelowIvy();
+  }
+
+  // Tree Ivy 拡張が出席グラフ (.ivy-section) を後から挿入した場合でも、
+  // タスクボタンが常にグラフより下に来るように並び順を直す。
+  function keepButtonsBelowIvy() {
+    document.querySelectorAll(`.${BUTTON_CLASS}`).forEach((button) => {
+      const parent = button.parentElement;
+      if (!parent) return;
+
+      const ivySection = parent.querySelector(".ivy-section");
+      if (!ivySection) return;
+
+      // グラフがボタンより後ろにある（＝ボタンが上にある）場合だけ末尾へ移動する
+      if (button.compareDocumentPosition(ivySection) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        parent.appendChild(button);
+      }
+    });
   }
 
   function setButtonLabel(button, iconName, labelText) {
@@ -334,6 +360,7 @@
         }
       }
       insertNavSettingsLink();
+      keepButtonsBelowIvy();
     });
 
     observer.observe(document.body, {

@@ -1,6 +1,6 @@
 # スタログ授業タスク管理 Chrome 拡張機能
 
-`data-class-id` を持つ `.ivy-section` を見つけて、授業ごとにタスク管理ボタンを追加する Chrome 拡張機能です。タスクは `chrome.storage.sync` に保存され、同じ Google アカウントで Chrome 同期を有効にしている別のパソコンとも自動的に共有されます。
+カレンダー上の授業リンク（`.div-class-name` 内の `/lms/class/<ID>/` へのリンク）を見つけて、授業ごとにタスク管理ボタンを追加する Chrome 拡張機能です。タスクは `chrome.storage.sync` に保存され、同じ Google アカウントで Chrome 同期を有効にしている別のパソコンとも自動的に共有されます。
 
 ## 機能
 
