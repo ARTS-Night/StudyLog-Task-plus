@@ -1,23 +1,94 @@
 (function () {
-  const storage = chrome.storage.sync;
-  const SYNC_QUOTA_BYTES = chrome.storage.sync.QUOTA_BYTES || 102400;
+  const MODE_KEY = "__storage_mode__";
+  let mode = "sync";
 
   const usageEl = document.getElementById("usage");
   const statusEl = document.getElementById("status");
   const importFileEl = document.getElementById("import-file");
+  const modeRadios = document.querySelectorAll('input[name="storage-mode"]');
 
-  refreshUsage();
+  function currentArea() {
+    return mode === "local" ? chrome.storage.local : chrome.storage.sync;
+  }
+
+  function currentQuota() {
+    const area = currentArea();
+    return area.QUOTA_BYTES || (mode === "local" ? 10485760 : 102400);
+  }
+
+  // タスク以外の内部キー（設定フラグなど）を除外する
+  function taskEntries(items) {
+    return Object.entries(items).filter(([key]) => !key.startsWith("__"));
+  }
+
+  chrome.storage.local.get([MODE_KEY], (result) => {
+    mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    modeRadios.forEach((radio) => {
+      radio.checked = radio.value === mode;
+    });
+    refreshUsage();
+  });
+
+  modeRadios.forEach((radio) => {
+    radio.addEventListener("change", () => {
+      const newMode = radio.value;
+      if (newMode === mode) return;
+
+      const label = newMode === "local" ? "この端末のみ（ローカル保存）" : "Google アカウントで同期";
+      if (!confirm(`保存先を「${label}」に切り替えます。\n現在のタスクは新しい保存先へコピーされます。よろしいですか？`)) {
+        modeRadios.forEach((r) => {
+          r.checked = r.value === mode;
+        });
+        return;
+      }
+
+      const source = currentArea();
+      const target = newMode === "local" ? chrome.storage.local : chrome.storage.sync;
+
+      source.get(null, (items) => {
+        const data = Object.fromEntries(taskEntries(items));
+
+        const applyMode = () => {
+          mode = newMode;
+          chrome.storage.local.set({ [MODE_KEY]: newMode }, () => {
+            refreshUsage();
+            showStatus(`保存先を「${label}」に切り替えました`);
+          });
+        };
+
+        if (Object.keys(data).length === 0) {
+          applyMode();
+          return;
+        }
+
+        target.set(data, () => {
+          if (chrome.runtime.lastError) {
+            showStatus(`コピーに失敗しました: ${chrome.runtime.lastError.message}`);
+            modeRadios.forEach((r) => {
+              r.checked = r.value === mode;
+            });
+            return;
+          }
+          applyMode();
+        });
+      });
+    });
+  });
 
   function refreshUsage() {
-    storage.getBytesInUse(null, (bytes) => {
-      const percent = ((bytes / SYNC_QUOTA_BYTES) * 100).toFixed(1);
-      storage.get(null, (items) => {
-        const subjectCount = Object.keys(items).length;
+    const area = currentArea();
+    area.getBytesInUse(null, (bytes) => {
+      const quota = currentQuota();
+      const percent = ((bytes / quota) * 100).toFixed(1);
+      area.get(null, (items) => {
+        const subjectCount = taskEntries(items).length;
         usageEl.innerHTML = "";
 
-        const text = document.createElement("span");
         const bold = document.createElement("b");
-        bold.textContent = `${(bytes / 1024).toFixed(1)} KB / ${(SYNC_QUOTA_BYTES / 1024).toFixed(0)} KB（${percent}%）`;
+        const quotaLabel = quota >= 1048576 ? `${(quota / 1048576).toFixed(0)} MB` : `${(quota / 1024).toFixed(0)} KB`;
+        bold.textContent = `${(bytes / 1024).toFixed(1)} KB / ${quotaLabel}（${percent}%）`;
+
+        const text = document.createElement("span");
         text.append(bold, document.createTextNode(` ・ ${subjectCount} 授業分のデータ`));
         usageEl.appendChild(text);
       });
@@ -53,8 +124,9 @@
   }
 
   document.getElementById("btn-export").addEventListener("click", () => {
-    storage.get(null, (items) => {
-      const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json" });
+    currentArea().get(null, (items) => {
+      const data = Object.fromEntries(taskEntries(items));
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const date = new Date().toISOString().slice(0, 10);
@@ -94,7 +166,8 @@
         return;
       }
 
-      storage.set(data, () => {
+      const clean = Object.fromEntries(taskEntries(data));
+      currentArea().set(clean, () => {
         if (chrome.runtime.lastError) {
           showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
           return;
@@ -110,17 +183,18 @@
   document.getElementById("btn-clear-done").addEventListener("click", () => {
     if (!confirm("すべての授業から完了済みタスクを削除します。よろしいですか？")) return;
 
-    storage.get(null, (items) => {
+    const area = currentArea();
+    area.get(null, (items) => {
       const updates = {};
       const removals = [];
 
-      Object.entries(items).forEach(([classId, value]) => {
+      taskEntries(items).forEach(([classId, value]) => {
         const entry = normalizeEntry(value);
         const remaining = entry.tasks.filter((task) => !task.done);
 
         if (remaining.length === entry.tasks.length) return;
 
-        if (remaining.length === 0 ) {
+        if (remaining.length === 0) {
           removals.push(classId);
         } else {
           updates[classId] = { subject: entry.subject, tasks: remaining };
@@ -133,15 +207,15 @@
       };
 
       if (Object.keys(updates).length > 0) {
-        storage.set(updates, () => {
+        area.set(updates, () => {
           if (removals.length > 0) {
-            storage.remove(removals, finish);
+            area.remove(removals, finish);
           } else {
             finish();
           }
         });
       } else if (removals.length > 0) {
-        storage.remove(removals, finish);
+        area.remove(removals, finish);
       } else {
         showStatus("完了済みタスクはありませんでした");
       }
@@ -151,9 +225,17 @@
   document.getElementById("btn-clear-all").addEventListener("click", () => {
     if (!confirm("保存されているすべてのタスクを削除します。この操作は元に戻せません。よろしいですか？")) return;
 
-    storage.clear(() => {
-      refreshUsage();
-      showStatus("すべてのデータを削除しました");
+    const area = currentArea();
+    area.get(null, (items) => {
+      const keys = taskEntries(items).map(([key]) => key);
+      if (keys.length === 0) {
+        showStatus("削除するデータはありませんでした");
+        return;
+      }
+      area.remove(keys, () => {
+        refreshUsage();
+        showStatus("すべてのデータを削除しました");
+      });
     });
   });
 })();

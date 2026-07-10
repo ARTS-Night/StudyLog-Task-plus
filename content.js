@@ -5,7 +5,9 @@
   const EMBED_ID = "lms-task-embed-panel";
   const BUTTON_CLASS = "lms-memo-btn";
   const HAS_TEXT_CLASS = "lms-memo-has-text";
-  const storage = chrome.storage.sync;
+  // 保存先モード（設定ページで切り替え）: "sync" = Google アカウントで同期 / "local" = この端末のみ
+  const MODE_KEY = "__storage_mode__";
+  let storage = chrome.storage.sync;
 
   // Material Symbols (https://fonts.google.com/icons) の SVG パス。
   // 外部フォント読み込みはページの CSP に阻まれる可能性があるためインライン SVG で埋め込む。
@@ -18,11 +20,17 @@
     close: "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
   };
 
-  addStyle();
-  addMemoButtons();
-  initClassPagePanel();
-  insertNavSettingsLink();
-  observeDynamicSections();
+  chrome.storage.local.get([MODE_KEY], (result) => {
+    if (result[MODE_KEY] === "local") {
+      storage = chrome.storage.local;
+    }
+
+    addStyle();
+    addMemoButtons();
+    initClassPagePanel();
+    insertNavSettingsLink();
+    observeDynamicSections();
+  });
 
   function createIcon(name, size = 16) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

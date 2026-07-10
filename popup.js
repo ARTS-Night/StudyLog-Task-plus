@@ -1,6 +1,7 @@
 (function () {
   const content = document.getElementById("content");
-  const storage = chrome.storage.sync;
+  const MODE_KEY = "__storage_mode__";
+  let storage = chrome.storage.sync;
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const ICON_PATHS = {
@@ -55,6 +56,7 @@
       content.innerHTML = "";
 
       const entries = Object.entries(items)
+        .filter(([classId]) => !classId.startsWith("__"))
         .map(([classId, value]) => ({ classId, ...normalizeEntry(value) }))
         .filter((entry) => entry.tasks.length > 0);
 
@@ -141,5 +143,10 @@
     });
   }
 
-  render();
+  chrome.storage.local.get([MODE_KEY], (result) => {
+    if (result[MODE_KEY] === "local") {
+      storage = chrome.storage.local;
+    }
+    render();
+  });
 })();
