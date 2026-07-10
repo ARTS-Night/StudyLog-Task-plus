@@ -6,6 +6,10 @@
   "permissions": [
     "storage"
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "すべてのタスクを表示"
+  },
   "content_scripts": [
     {
       "matches": [

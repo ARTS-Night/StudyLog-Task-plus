@@ -6,9 +6,35 @@
   const HAS_TEXT_CLASS = "lms-memo-has-text";
   const storage = chrome.storage.sync;
 
+  // Material Symbols (https://fonts.google.com/icons) の SVG パス。
+  // 外部フォント読み込みはページの CSP に阻まれる可能性があるためインライン SVG で埋め込む。
+  const ICON_PATHS = {
+    task: "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z",
+    check_circle: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
+    edit: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
+    delete: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+    add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+    close: "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+  };
+
   addStyle();
   addMemoButtons();
   observeDynamicSections();
+
+  function createIcon(name, size = 16) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("fill", "currentColor");
+    svg.classList.add("lms-icon");
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", ICON_PATHS[name]);
+    svg.appendChild(path);
+
+    return svg;
+  }
 
   function addStyle() {
     if (document.getElementById(STYLE_ID)) return;
@@ -16,11 +42,19 @@
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
+      .lms-icon {
+        vertical-align: -3px;
+        flex: 0 0 auto;
+      }
+
       .lms-memo-btn {
-        display: block;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
         width: 100%;
         margin-top: 5px;
-        padding: 2px 5px;
+        padding: 3px 5px;
         font-size: 11px;
         background-color: #4CAF50;
         color: white;
@@ -40,60 +74,150 @@
 
       .lms-memo-popup {
         position: fixed;
-        inset: 100px;
+        top: 90px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(400px, 92vw);
+        max-height: min(70vh, 560px);
         background: white;
-        border: 2px solid #ccc;
-        padding: 18px;
+        border: 1px solid #ddd;
+        padding: 16px;
         z-index: 10000;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-        border-radius: 5px;
-        width: auto;
-        height: auto;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+        border-radius: 8px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
         box-sizing: border-box;
         overflow: hidden;
       }
 
       .lms-memo-popup h3 {
+        display: flex;
+        align-items: center;
+        gap: 6px;
         margin: 0;
-        font-size: 16px;
+        font-size: 15px;
         color: #333;
       }
 
-      .lms-memo-popup textarea {
-        width: 100%;
+      .lms-task-list {
         flex: 1;
-        min-height: 220px;
+        overflow: auto;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border-top: 1px solid #eee;
+      }
+
+      .lms-task-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 6px 2px;
+        border-bottom: 1px solid #eee;
+      }
+
+      .lms-task-item input[type="checkbox"] {
+        margin-top: 3px;
+        flex: 0 0 auto;
+      }
+
+      .lms-task-text {
+        flex: 1;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .lms-task-item.done .lms-task-text {
+        text-decoration: line-through;
+        color: #999;
+      }
+
+      .lms-task-actions {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 2px;
+      }
+
+      .lms-task-actions button {
+        display: inline-flex;
+        align-items: center;
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 3px;
+        border-radius: 4px;
+        color: #666;
+      }
+
+      .lms-task-actions button:hover {
+        background: #f0f0f0;
+        color: #333;
+      }
+
+      .lms-task-empty {
+        color: #999;
+        font-size: 12px;
+        padding: 8px 2px;
+      }
+
+      .lms-task-form textarea {
+        width: 100%;
+        min-height: 60px;
         box-sizing: border-box;
         padding: 5px;
         font-size: 12px;
         resize: vertical;
       }
 
+      .lms-task-form-buttons {
+        margin-top: 6px;
+        text-align: right;
+      }
+
+      .lms-task-form-buttons button {
+        margin-left: 5px;
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+
       .lms-memo-popup-buttons {
         margin-top: 0;
-        text-align: right;
+        display: flex;
+        justify-content: flex-end;
+        gap: 5px;
         flex: 0 0 auto;
       }
 
       .lms-memo-popup-buttons button {
-        margin-left: 5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
         padding: 4px 10px;
         cursor: pointer;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        background: white;
       }
 
       .lms-memo-save-btn {
         background: #4CAF50;
         color: white;
         border: none;
-        border-radius: 3px;
+        border-radius: 4px;
+      }
+
+      .lms-task-add-btn {
+        background: #2196F3 !important;
+        color: white !important;
+        border: none !important;
       }
 
       .lms-memo-preview-popup {
         position: fixed;
-        max-width: 280px;
+        max-width: 260px;
         max-height: 200px;
         overflow: auto;
         background: #fffde7;
@@ -102,11 +226,20 @@
         padding: 8px 10px;
         font-size: 12px;
         color: #333;
-        white-space: pre-wrap;
-        word-break: break-word;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
         z-index: 10001;
         pointer-events: none;
+      }
+
+      .lms-preview-task-list {
+        margin: 0;
+        padding-left: 16px;
+      }
+
+      .lms-preview-task-list li {
+        margin-bottom: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
     `;
     document.head.appendChild(style);
@@ -135,15 +268,15 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = BUTTON_CLASS;
-      button.textContent = "📝 メモ";
+      setButtonLabel(button, "task", "タスク");
 
       storage.get([classId], (result) => {
-        updateButtonState(button, result[classId] || "");
+        updateButtonState(button, result[classId]);
       });
 
       button.addEventListener("click", (event) => {
         event.preventDefault();
-        openMemoPopup(classId, subjectName, button);
+        openTaskPopup(classId, subjectName, button);
       });
 
       button.addEventListener("mouseenter", () => {
@@ -156,6 +289,11 @@
 
       parentSection.appendChild(button);
     });
+  }
+
+  function setButtonLabel(button, iconName, labelText) {
+    button.textContent = "";
+    button.append(createIcon(iconName, 14), document.createTextNode(labelText));
   }
 
   function observeDynamicSections() {
@@ -175,52 +313,203 @@
     });
   }
 
-  function openMemoPopup(classId, subjectName, buttonEl) {
+  // 保存形式: { subject: string, tasks: [{id, text, done}] }
+  // 旧形式（タスク配列のみ、またはメモ文字列）も読み込めるように変換する。
+  function normalizeEntry(value) {
+    if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
+      return {
+        subject: typeof value.subject === "string" ? value.subject : "",
+        tasks: normalizeTasks(value.tasks)
+      };
+    }
+
+    return { subject: "", tasks: normalizeTasks(value) };
+  }
+
+  function normalizeTasks(value) {
+    if (Array.isArray(value)) {
+      return value
+        .filter((task) => task && typeof task.text === "string")
+        .map((task) => ({
+          id: task.id || createTaskId(),
+          text: task.text,
+          done: !!task.done
+        }));
+    }
+
+    if (typeof value === "string" && value.trim() !== "") {
+      return [{ id: createTaskId(), text: value, done: false }];
+    }
+
+    return [];
+  }
+
+  function createTaskId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function openTaskPopup(classId, subjectName, buttonEl) {
     hidePreviewPopup();
 
     const oldPopup = document.getElementById(POPUP_ID);
     if (oldPopup) oldPopup.remove();
+
+    let tasks = [];
+    let isFormOpen = false;
+    let editingTaskId = null;
 
     const popup = document.createElement("div");
     popup.id = POPUP_ID;
     popup.className = "lms-memo-popup";
 
     const title = document.createElement("h3");
-    title.textContent = `📝 メモ：${subjectName}`;
+    title.append(createIcon("task", 18), document.createTextNode(subjectName));
 
-    const textarea = document.createElement("textarea");
-    textarea.id = "lms-memo-textarea";
-    textarea.rows = 10;
-    textarea.placeholder = "ここにメモを入力...";
+    const listEl = document.createElement("ul");
+    listEl.className = "lms-task-list";
 
-    const buttons = document.createElement("div");
-    buttons.className = "lms-memo-popup-buttons";
+    const form = document.createElement("div");
+    form.className = "lms-task-form";
+    form.hidden = true;
+
+    const formTextarea = document.createElement("textarea");
+    formTextarea.placeholder = "タスクの内容を入力...";
+
+    const formButtons = document.createElement("div");
+    formButtons.className = "lms-task-form-buttons";
+
+    const formCancelBtn = document.createElement("button");
+    formCancelBtn.type = "button";
+    formCancelBtn.textContent = "キャンセル";
+
+    const formSaveBtn = document.createElement("button");
+    formSaveBtn.type = "button";
+    formSaveBtn.className = "lms-memo-save-btn";
+    formSaveBtn.textContent = "保存";
+
+    formButtons.append(formCancelBtn, formSaveBtn);
+    form.append(formTextarea, formButtons);
+
+    const bottomButtons = document.createElement("div");
+    bottomButtons.className = "lms-memo-popup-buttons";
+
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "lms-task-add-btn";
+    addButton.append(createIcon("add", 14), document.createTextNode("新しいタスク"));
 
     const closeButton = document.createElement("button");
     closeButton.type = "button";
-    closeButton.textContent = "閉じる";
+    closeButton.append(createIcon("close", 14), document.createTextNode("閉じる"));
 
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.className = "lms-memo-save-btn";
-    saveButton.textContent = "保存";
-
-    buttons.append(closeButton, saveButton);
-    popup.append(title, textarea, buttons);
+    bottomButtons.append(addButton, closeButton);
+    popup.append(title, listEl, form, bottomButtons);
     document.body.appendChild(popup);
 
     storage.get([classId], (result) => {
-      textarea.value = result[classId] || "";
+      tasks = normalizeEntry(result[classId]).tasks;
+      renderList();
     });
 
-    saveButton.addEventListener("click", () => {
-      const text = textarea.value;
+    function renderList() {
+      listEl.innerHTML = "";
 
-      storage.set({ [classId]: text }, () => {
-        updateButtonState(buttonEl, text);
-        document.removeEventListener("mousedown", handleOutsideClick, true);
-        popup.remove();
+      if (tasks.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "lms-task-empty";
+        empty.textContent = "タスクはまだありません。";
+        listEl.appendChild(empty);
+        return;
+      }
+
+      tasks.forEach((task) => {
+        const item = document.createElement("li");
+        item.className = "lms-task-item" + (task.done ? " done" : "");
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = task.done;
+        checkbox.addEventListener("change", () => {
+          task.done = checkbox.checked;
+          persist();
+          renderList();
+        });
+
+        const text = document.createElement("span");
+        text.className = "lms-task-text";
+        text.textContent = task.text;
+
+        const actions = document.createElement("div");
+        actions.className = "lms-task-actions";
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.title = "編集";
+        editBtn.appendChild(createIcon("edit", 15));
+        editBtn.addEventListener("click", () => openForm(task));
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.title = "削除";
+        deleteBtn.appendChild(createIcon("delete", 15));
+        deleteBtn.addEventListener("click", () => {
+          tasks = tasks.filter((t) => t.id !== task.id);
+          persist();
+          renderList();
+        });
+
+        actions.append(editBtn, deleteBtn);
+        item.append(checkbox, text, actions);
+        listEl.appendChild(item);
       });
+    }
+
+    function openForm(task) {
+      editingTaskId = task ? task.id : null;
+      formTextarea.value = task ? task.text : "";
+      form.hidden = false;
+      isFormOpen = true;
+      formTextarea.focus();
+    }
+
+    function closeForm() {
+      form.hidden = true;
+      formTextarea.value = "";
+      editingTaskId = null;
+      isFormOpen = false;
+    }
+
+    function persist() {
+      storage.set({ [classId]: { subject: subjectName, tasks } }, () => {
+        updateButtonState(buttonEl, { subject: subjectName, tasks });
+      });
+    }
+
+    addButton.addEventListener("click", () => openForm(null));
+
+    formCancelBtn.addEventListener("click", () => closeForm());
+
+    formSaveBtn.addEventListener("click", () => {
+      const text = formTextarea.value.trim();
+
+      if (text === "") {
+        closeForm();
+        return;
+      }
+
+      if (editingTaskId) {
+        const target = tasks.find((t) => t.id === editingTaskId);
+        if (target) target.text = text;
+      } else {
+        tasks.push({ id: createTaskId(), text, done: false });
+      }
+
+      persist();
+      closeForm();
+      renderList();
     });
 
     closeButton.addEventListener("click", () => {
@@ -229,6 +518,8 @@
     });
 
     function handleOutsideClick(event) {
+      if (isFormOpen) return;
+
       if (!popup.contains(event.target)) {
         document.removeEventListener("mousedown", handleOutsideClick, true);
         popup.remove();
@@ -258,29 +549,55 @@
     return "不明な授業";
   }
 
-  function updateButtonState(button, text) {
-    button.dataset.memoText = text;
+  function updateButtonState(button, rawValue) {
+    const tasks = normalizeEntry(rawValue).tasks;
+    button.dataset.tasks = JSON.stringify(tasks);
 
-    if (text.trim() !== "") {
+    const incompleteCount = tasks.filter((task) => !task.done).length;
+
+    if (incompleteCount > 0) {
       button.classList.add(HAS_TEXT_CLASS);
-      button.textContent = "📝 メモあり";
+      setButtonLabel(button, "task", `タスク (${incompleteCount})`);
+      return;
+    }
+
+    if (tasks.length > 0) {
+      button.classList.add(HAS_TEXT_CLASS);
+      setButtonLabel(button, "check_circle", `完了 (${tasks.length})`);
       return;
     }
 
     button.classList.remove(HAS_TEXT_CLASS);
-    button.textContent = "📝 メモ";
+    setButtonLabel(button, "task", "タスク");
   }
 
   function showPreviewPopup(button) {
-    const text = button.dataset.memoText || "";
-    if (text.trim() === "") return;
+    let tasks = [];
+    try {
+      tasks = JSON.parse(button.dataset.tasks || "[]");
+    } catch (error) {
+      tasks = [];
+    }
+
+    const incompleteTasks = tasks.filter((task) => !task.done);
+    if (incompleteTasks.length === 0) return;
 
     hidePreviewPopup();
 
     const preview = document.createElement("div");
     preview.id = PREVIEW_ID;
     preview.className = "lms-memo-preview-popup";
-    preview.textContent = text;
+
+    const list = document.createElement("ul");
+    list.className = "lms-preview-task-list";
+
+    incompleteTasks.forEach((task) => {
+      const item = document.createElement("li");
+      item.textContent = task.text;
+      list.appendChild(item);
+    });
+
+    preview.appendChild(list);
     document.body.appendChild(preview);
 
     const rect = button.getBoundingClientRect();
