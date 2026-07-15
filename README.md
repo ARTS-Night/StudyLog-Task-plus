@@ -44,7 +44,7 @@ chrome.storage.sync.get(null, (d) => console.log(JSON.stringify(d, null, 2)))   
 chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  // ローカル領域
 ```
 
-キーは授業 ID（例: `10054`）で、値は `{ subject: 科目名, tasks: [{id, text, done}] }` です。`__` で始まるキー（`__storage_mode__`, `__device__`, `__sync_check__`）は拡張機能の内部設定です。
+キーは授業 ID（例: `10054`）で、値は `{ subject: 科目名, tasks: [{id, text, done}] }` です。`__` で始まるキー（`__storage_mode__`, `__device__`, `__sync_check__`, `__sync_ready__`）は拡張機能の内部設定です。`__sync_ready__` は「この端末で同期ダウンロードを確認した日時」で、確認から24時間はチェックを省略し、期限が切れると次にページやタスク一覧を開いたときに再チェックします（sync にデータがあれば一瞬で通過します）。未確認の間は、授業ページ・ツールバーのタスク一覧ともに同期データが届くまで（最大20秒）読み込み・追加を待たせ、空のリストでサーバー上のデータを上書きしてしまう事故を防ぎます。ガードの実装は `sync-guard.js` にあります。
 
 ## 同期の条件とトラブルシューティング
 
@@ -75,15 +75,10 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 
 - `manifest.json`: Chrome 拡張機能の設定です。
 - `content.js`: ページにタスク管理ボタンとポップアップを追加する本体です。
+- `sync-guard.js`: 初回同期ガード（同期データが届くまで読み書きを待たせる共通処理）です。授業ページとツールバーポップアップの両方で使います。
 - `popup.html` / `popup.js`: ツールバーアイコンをクリックしたときに表示される全タスク一覧です（完了/未完了の切り替えが可能）。
 - `settings.html` / `settings.js`: 設定ページ（バックアップ・データ整理・使用量確認）です。
 
-## 対象サイトを限定したい場合
+## 対象サイト
 
-現在は検証しやすいように `<all_urls>` にしています。対象サイトだけで動かす場合は、`manifest.json` の `matches` を次のように変更してください。
-
-```json
-"matches": [
-  "https://example.com/*"
-]
-```
+この拡張機能は `https://portal.iwasaki.ac.jp/lms/` 配下のページでのみ動作します。対象サイトを変更する場合は、`manifest.json` の `content_scripts` の `matches` と `web_accessible_resources` の `matches` を変更してください。

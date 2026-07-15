@@ -20,10 +20,14 @@
     close: "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
   };
 
-  chrome.storage.local.get([MODE_KEY], (result) => {
-    if (result[MODE_KEY] === "local") {
+  // 初回同期ガード本体は sync-guard.js（content.js より先に読み込まれる）
+  chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+    const mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    if (mode === "local") {
       storage = chrome.storage.local;
     }
+
+    SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
 
     addStyle();
     addMemoButtons();
@@ -234,6 +238,11 @@
         border: none !important;
       }
 
+      .lms-task-add-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
       #${EMBED_ID} .lms-task-list {
         max-height: 320px;
         border-top: none;
@@ -305,8 +314,10 @@
       button.className = BUTTON_CLASS;
       setButtonLabel(button, "task", "タスク");
 
-      storage.get([classId], (result) => {
-        updateButtonState(button, result[classId]);
+      SyncGuard.when(() => {
+        storage.get([classId], (result) => {
+          updateButtonState(button, result[classId]);
+        });
       });
 
       button.addEventListener("click", (event) => {
@@ -477,10 +488,23 @@
     buttonsRow.appendChild(addButton);
     body.append(listEl, form, buttonsRow);
 
-    storage.get([classId], (result) => {
-      const entry = normalizeEntry(result[classId]);
-      tasks = entry.tasks;
-      renderList();
+    // 初回同期が終わるまではタスクを読み込まず、追加もできないようにする
+    // （空のリストで保存してサーバー上のデータを上書きしないため）
+    if (!SyncGuard.isReady()) {
+      addButton.disabled = true;
+      const waiting = document.createElement("li");
+      waiting.className = "lms-task-empty";
+      waiting.textContent = "同期データを確認中です…（最大20秒ほどかかります）";
+      listEl.appendChild(waiting);
+    }
+
+    SyncGuard.when(() => {
+      addButton.disabled = false;
+      storage.get([classId], (result) => {
+        const entry = normalizeEntry(result[classId]);
+        tasks = entry.tasks;
+        renderList();
+      });
     });
 
     function renderList() {
@@ -557,6 +581,10 @@
         const existing = normalizeEntry(result[classId]);
         const subject = subjectName || existing.subject;
         storage.set({ [classId]: { subject, tasks } }, () => {
+          if (chrome.runtime.lastError) {
+            alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n（1授業あたりの保存容量の上限を超えている可能性があります）`);
+            return;
+          }
           onTasksChanged(tasks);
         });
       });
@@ -593,7 +621,14 @@
     hidePreviewPopup();
 
     const oldPopup = document.getElementById(POPUP_ID);
-    if (oldPopup) oldPopup.remove();
+    if (oldPopup) {
+      // 前のポップアップの外側クリック用リスナーも一緒に外す（フォームを開いたまま
+      // 別の授業のポップアップを開くと、リスナーが残り続けるため）
+      if (oldPopup.outsideClickHandler) {
+        document.removeEventListener("mousedown", oldPopup.outsideClickHandler, true);
+      }
+      oldPopup.remove();
+    }
 
     let isFormOpen = false;
 
@@ -635,6 +670,8 @@
         popup.remove();
       }
     }
+
+    popup.outsideClickHandler = handleOutsideClick;
 
     setTimeout(() => {
       document.addEventListener("mousedown", handleOutsideClick, true);

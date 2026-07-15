@@ -123,6 +123,11 @@
           mark.addEventListener("click", () => {
             task.done = !task.done;
             storage.set({ [entry.classId]: { subject: entry.subject, tasks: entry.tasks } }, () => {
+              if (chrome.runtime.lastError) {
+                task.done = !task.done;
+                renderMark();
+                return;
+              }
               item.classList.toggle("done", task.done);
               mark.title = task.done ? "未完了に戻す" : "完了にする";
               renderMark();
@@ -143,10 +148,23 @@
     });
   }
 
-  chrome.storage.local.get([MODE_KEY], (result) => {
-    if (result[MODE_KEY] === "local") {
+  chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+    const mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    if (mode === "local") {
       storage = chrome.storage.local;
     }
-    render();
+
+    // 新しい端末では同期データが届くまで一覧を表示しない（sync-guard.js 参照）
+    SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
+
+    if (!SyncGuard.isReady()) {
+      content.innerHTML = "";
+      const waiting = document.createElement("div");
+      waiting.className = "empty";
+      waiting.textContent = "同期データを確認中です…（最大20秒ほどかかります）";
+      content.appendChild(waiting);
+    }
+
+    SyncGuard.when(render);
   });
 })();

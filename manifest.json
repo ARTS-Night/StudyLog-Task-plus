@@ -21,16 +21,17 @@
         "settings.html"
       ],
       "matches": [
-        "<all_urls>"
+        "https://portal.iwasaki.ac.jp/*"
       ]
     }
   ],
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "https://portal.iwasaki.ac.jp/lms/*"
       ],
       "js": [
+        "sync-guard.js",
         "content.js"
       ],
       "run_at": "document_idle"
