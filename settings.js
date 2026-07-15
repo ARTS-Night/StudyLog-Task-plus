@@ -23,11 +23,22 @@
     return Object.entries(items).filter(([key]) => !key.startsWith("__"));
   }
 
+  const syncGuideEl = document.getElementById("sync-guide");
+
+  function updateSyncGuide() {
+    syncGuideEl.hidden = mode !== "sync";
+  }
+
+  document.getElementById("btn-open-sync-settings").addEventListener("click", () => {
+    chrome.tabs.create({ url: "chrome://settings/account" });
+  });
+
   chrome.storage.local.get([MODE_KEY], (result) => {
     mode = result[MODE_KEY] === "local" ? "local" : "sync";
     modeRadios.forEach((radio) => {
       radio.checked = radio.value === mode;
     });
+    updateSyncGuide();
     refreshUsage();
   });
 
@@ -90,6 +101,24 @@
             time.className = "device-time";
             time.textContent = mark.time ? new Date(mark.time).toLocaleString("ja-JP") : "";
             item.appendChild(time);
+
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "device-remove";
+            removeBtn.textContent = "×";
+            removeBtn.title = "この印を削除";
+            removeBtn.addEventListener("click", () => {
+              if (!confirm(`「${mark.name || id}」の印を削除します。よろしいですか？`)) return;
+              chrome.storage.sync.get([SYNC_CHECK_KEY], (res) => {
+                const current = res[SYNC_CHECK_KEY] || {};
+                delete current[id];
+                chrome.storage.sync.set({ [SYNC_CHECK_KEY]: current }, () => {
+                  renderSyncCheck();
+                  showStatus("印を削除しました");
+                });
+              });
+            });
+            item.appendChild(removeBtn);
 
             syncCheckListEl.appendChild(item);
           });
@@ -166,6 +195,7 @@
         const applyMode = () => {
           mode = newMode;
           chrome.storage.local.set({ [MODE_KEY]: newMode }, () => {
+            updateSyncGuide();
             refreshUsage();
             showStatus(`保存先を「${label}」に切り替えました`);
           });
