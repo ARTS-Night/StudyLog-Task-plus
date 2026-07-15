@@ -14,6 +14,29 @@
     chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
   });
 
+  // 手動同期: ストレージから読み直して最新の同期データを表示する
+  document.getElementById("btn-refresh").addEventListener("click", () => {
+    render(() => showStatus("手元に届いている最新の同期データを表示しました"));
+  });
+
+  const statusEl = document.getElementById("status");
+  let statusTimer = null;
+  function showStatus(message) {
+    statusEl.textContent = message;
+    statusEl.classList.add("show");
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => statusEl.classList.remove("show"), 2000);
+  }
+
+  function showSavedStatus() {
+    // Chrome の同期が実際にオンかどうかは検知できないため、断定しない文言にする
+    showStatus(
+      storage === chrome.storage.sync
+        ? "✓ 保存しました（同期がオンなら他の端末にも反映）"
+        : "✓ 保存しました（この端末のみ）"
+    );
+  }
+
   function createIcon(name, size, color) {
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
@@ -51,8 +74,17 @@
     return { subject: "", tasks: [] };
   }
 
-  function render() {
+  function render(onDone) {
     storage.get(null, (items) => {
+      if (chrome.runtime.lastError) {
+        content.innerHTML = "";
+        const failed = document.createElement("div");
+        failed.className = "empty";
+        failed.textContent = `読み込みに失敗しました: ${chrome.runtime.lastError.message}`;
+        content.appendChild(failed);
+        return;
+      }
+
       content.innerHTML = "";
 
       const entries = Object.entries(items)
@@ -65,6 +97,7 @@
         empty.className = "empty";
         empty.textContent = "保存されているタスクはありません。";
         content.appendChild(empty);
+        if (onDone) onDone();
         return;
       }
 
@@ -126,12 +159,14 @@
               if (chrome.runtime.lastError) {
                 task.done = !task.done;
                 renderMark();
+                showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
                 return;
               }
               item.classList.toggle("done", task.done);
               mark.title = task.done ? "未完了に戻す" : "完了にする";
               renderMark();
               updateCount();
+              showSavedStatus();
             });
           });
 
@@ -145,6 +180,8 @@
         section.append(name, list);
         content.appendChild(section);
       });
+
+      if (onDone) onDone();
     });
   }
 

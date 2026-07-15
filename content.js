@@ -3,6 +3,7 @@
   const POPUP_ID = "lms-memo-popup-window";
   const PREVIEW_ID = "lms-memo-preview-popup";
   const EMBED_ID = "lms-task-embed-panel";
+  const TOAST_ID = "lms-memo-toast";
   const BUTTON_CLASS = "lms-memo-btn";
   const HAS_TEXT_CLASS = "lms-memo-has-text";
   // 保存先モード（設定ページで切り替え）: "sync" = Google アカウントで同期 / "local" = この端末のみ
@@ -250,6 +251,26 @@
 
       #${EMBED_ID} .lms-memo-popup-buttons {
         justify-content: flex-start;
+      }
+
+      .lms-memo-toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #323232;
+        color: white;
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-size: 13px;
+        z-index: 10002;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+
+      .lms-memo-toast.show {
+        opacity: 1;
       }
 
       .lms-memo-preview-popup {
@@ -576,6 +597,9 @@
     }
 
     function persist() {
+      // ponytail: 授業キー単位の後勝ち保存。複数端末で同じ授業を同時編集すると
+      // 後に書いた側が丸ごと勝つ。タスク単位のマージが必要になったら
+      // task.updatedAt を導入して統合する
       // 保存済みの科目名がある場合は上書きしない（授業ページでは科目名が取れないことがあるため）
       storage.get([classId], (result) => {
         const existing = normalizeEntry(result[classId]);
@@ -586,6 +610,7 @@
             return;
           }
           onTasksChanged(tasks);
+          showSavedToast();
         });
       });
     }
@@ -826,5 +851,31 @@
   function hidePreviewPopup() {
     const preview = document.getElementById(PREVIEW_ID);
     if (preview) preview.remove();
+  }
+
+  // 保存が成功したことをその場で知らせるトースト。
+  // 同期モードでは「同期される」ことも合わせて伝える。
+  let toastTimer = null;
+  function showToast(message) {
+    let toast = document.getElementById(TOAST_ID);
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = TOAST_ID;
+      toast.className = "lms-memo-toast";
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 2200);
+  }
+
+  function showSavedToast() {
+    // Chrome の同期が実際にオンかどうかは拡張機能からは検知できないため、断定しない文言にする
+    showToast(
+      storage === chrome.storage.sync
+        ? "✓ 保存しました（Chrome の同期がオンなら他の端末にも反映されます）"
+        : "✓ 保存しました（この端末のみ）"
+    );
   }
 })();

@@ -113,6 +113,10 @@
                 const current = res[SYNC_CHECK_KEY] || {};
                 delete current[id];
                 chrome.storage.sync.set({ [SYNC_CHECK_KEY]: current }, () => {
+                  if (chrome.runtime.lastError) {
+                    showStatus(`削除に失敗しました: ${chrome.runtime.lastError.message}`);
+                    return;
+                  }
                   renderSyncCheck();
                   showStatus("印を削除しました");
                 });

@@ -51,7 +51,12 @@ const SyncGuard = (() => {
     }
 
     chrome.storage.sync.get(null, (items) => {
-      if (Object.keys(items).length > 0) {
+      // 読み取り自体が失敗した場合は「データあり」と誤判定せず、
+      // 下の onChanged / タイムアウト待ちに回す
+      if (!chrome.runtime.lastError && Object.keys(items).length > 0) {
+        // ponytail: __sync_check__ などの内部キーだけでも「同期ダウンロードが
+        // 動いた」合図とみなす（タスクキー限定にすると、印しか無いアカウントが
+        // 毎回タイムアウト待ちになるため）。キー単位の取り残しは許容する。
         markReady(true);
         return;
       }
@@ -64,10 +69,12 @@ const SyncGuard = (() => {
       chrome.storage.onChanged.addListener(listener);
 
       // ponytail: 本当に空のアカウント（新規ユーザー）は判別できないため、
-      // 20 秒待っても何も届かなければ空とみなして許可する
+      // 20 秒待っても何も届かなければ空とみなして許可する。
+      // ただし「確認済み」フラグは保存しない（回線が遅いだけの可能性があるので、
+      // 実データを確認できるまでは次回のページ表示でも再チェックさせる）
       setTimeout(() => {
         chrome.storage.onChanged.removeListener(listener);
-        markReady(true);
+        markReady(false);
       }, 20000);
     });
   }
