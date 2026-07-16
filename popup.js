@@ -1,6 +1,8 @@
 (function () {
   const content = document.getElementById("content");
   const MODE_KEY = "__storage_mode__";
+  const MUTATION_LOCK = "stalog-task-storage-mutation";
+  const CLASS_LOCK_PREFIX = "stalog-task-class:";
   let storage = chrome.storage.sync;
 
   const SVG_NS = "http://www.w3.org/2000/svg";
@@ -12,6 +14,10 @@
 
   document.getElementById("btn-settings").addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
+  });
+
+  document.getElementById("btn-open-list").addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("tasks.html") });
   });
 
   // 手動同期: ストレージから読み直して最新の同期データを表示する
@@ -35,6 +41,17 @@
         ? "✓ 保存しました（同期がオンなら他の端末にも反映）"
         : "✓ 保存しました（この端末のみ）"
     );
+  }
+
+  function runClassMutation(classId, operation) {
+    const run = () => new Promise((resolve) => operation(resolve));
+    const withClassLock = () => navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request(`${CLASS_LOCK_PREFIX}${classId}`, { mode: "exclusive" }, run)
+      : run();
+    const pending = navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request(MUTATION_LOCK, { mode: "exclusive" }, withClassLock)
+      : withClassLock();
+    pending.catch((error) => showStatus(`保存に失敗しました: ${error.message}`));
   }
 
   function createIcon(name, size, color) {
@@ -162,21 +179,23 @@
             const wasDone = !!task.done;
             task.done = !wasDone;
 
-            const finish = () => {
-              mark.disabled = false;
-            };
-
-            const revert = (message) => {
-              task.done = wasDone;
-              renderMark();
-              showStatus(message);
-              finish();
-            };
-
             // 保存直前に読み直した最新データへ、このタスクの完了状態だけを反映する。
             // ポップアップを開いたときの配列を丸ごと保存すると、その後に他の端末で
             // 追加されたタスクを消してしまうため
-            storage.get([entry.classId], (result) => {
+            runClassMutation(entry.classId, (releaseMutation) => {
+              const finish = () => {
+                mark.disabled = false;
+                releaseMutation();
+              };
+
+              const revert = (message) => {
+                task.done = wasDone;
+                renderMark();
+                showStatus(message);
+                finish();
+              };
+
+              storage.get([entry.classId], (result) => {
               if (chrome.runtime.lastError) {
                 revert(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
                 return;
@@ -192,6 +211,7 @@
               if (index < 0) {
                 task.done = wasDone;
                 showStatus("このタスクは他の端末で変更されたため、一覧を読み直しました");
+                releaseMutation();
                 render();
                 return;
               }
@@ -210,6 +230,7 @@
                 showSavedStatus();
                 finish();
               });
+              });
             });
           });
 
@@ -227,6 +248,14 @@
       if (onDone) onDone();
     });
   }
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[MODE_KEY]) return;
+    storage = changes[MODE_KEY].newValue === "local"
+      ? chrome.storage.local
+      : chrome.storage.sync;
+    if (SyncGuard.isReady()) render();
+  });
 
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
     const mode = result[MODE_KEY] === "local" ? "local" : "sync";

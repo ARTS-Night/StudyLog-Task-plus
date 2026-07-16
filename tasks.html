@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>スタログ授業タスク管理</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --accent: #2f8f4e;
+      --accent-dark: #24743e;
+      --accent-soft: #edf8f0;
+      --blue: #2878bd;
+      --danger: #c83e3e;
+      --ink: #263238;
+      --muted: #6d7880;
+      --line: #dce3e7;
+      --surface: #ffffff;
+      --background: #f4f7f8;
+      --shadow: 0 8px 24px rgba(38, 50, 56, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--ink);
+      background: var(--background);
+      font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    select {
+      cursor: pointer;
+    }
+
+    button:disabled,
+    input:disabled,
+    select:disabled,
+    textarea:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid rgba(40, 120, 189, 0.25);
+      outline-offset: 2px;
+    }
+
+    .page-header {
+      color: #ffffff;
+      background: linear-gradient(135deg, #24743e, #3c9e5d);
+    }
+
+    .page-header-inner,
+    main {
+      width: min(1040px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .page-header-inner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 112px;
+      padding: 22px 0;
+    }
+
+    .app-mark {
+      display: grid;
+      flex: 0 0 auto;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      border-radius: 14px;
+      color: var(--accent-dark);
+      background: #ffffff;
+      box-shadow: 0 5px 18px rgba(0, 0, 0, 0.14);
+      font-size: 27px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(21px, 3vw, 28px);
+      line-height: 1.3;
+    }
+
+    .header-description {
+      margin: 3px 0 0;
+      color: rgba(255, 255, 255, 0.86);
+      font-size: 13px;
+    }
+
+    main {
+      padding: 24px 0 56px;
+    }
+
+    .panel {
+      margin-bottom: 20px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .catalog-meta {
+      display: flex;
+      max-width: 420px;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 7px;
+      text-align: right;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.4;
+    }
+
+    .panel-note,
+    .catalog-status,
+    .summary {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .add-grid {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.5fr) minmax(180px, 1fr) minmax(220px, 1.4fr);
+      gap: 12px;
+    }
+
+    .field {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .field > label {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    input[type="search"],
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid #bdc8ce;
+      border-radius: 7px;
+      color: var(--ink);
+      background: #ffffff;
+    }
+
+    input[type="search"],
+    select {
+      min-height: 40px;
+      padding: 8px 10px;
+    }
+
+    textarea {
+      min-height: 86px;
+      padding: 9px 10px;
+      resize: vertical;
+    }
+
+    .task-field {
+      grid-column: 1 / -1;
+    }
+
+    .form-actions {
+      display: flex;
+      grid-column: 1 / -1;
+      justify-content: flex-end;
+      margin-top: 2px;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 38px;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 15px;
+      border: 1px solid #b9c4ca;
+      border-radius: 7px;
+      color: var(--ink);
+      background: #ffffff;
+    }
+
+    .button:hover:not(:disabled) {
+      background: #f1f5f6;
+    }
+
+    .button.primary {
+      border-color: var(--accent);
+      color: #ffffff;
+      background: var(--accent);
+    }
+
+    .button.primary:hover:not(:disabled) {
+      background: var(--accent-dark);
+    }
+
+    .button.danger {
+      border-color: #e2b4b4;
+      color: var(--danger);
+    }
+
+    .button.danger:hover:not(:disabled) {
+      background: #fff1f1;
+    }
+
+    .button.small {
+      min-height: 32px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .task-groups {
+      display: grid;
+      gap: 18px;
+    }
+
+    .year-group {
+      min-width: 0;
+    }
+
+    .year-heading {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .year-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 9px;
+      border-radius: 999px;
+      color: var(--blue);
+      background: #eaf4fc;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .pending-badge {
+      color: #7a5200;
+      background: #fff0c2;
+    }
+
+    .class-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .class-card {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #ffffff;
+    }
+
+    .pending-card {
+      border-color: #e7c76d;
+    }
+
+    .class-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 13px;
+      border-bottom: 1px solid #edf1f3;
+      background: #f8fafb;
+    }
+
+    .class-name {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-weight: 700;
+    }
+
+    .task-count {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .task-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .task-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 10px;
+      padding: 10px 13px;
+      border-bottom: 1px solid #edf1f3;
+    }
+
+    .task-item:last-child {
+      border-bottom: 0;
+    }
+
+    .task-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin: 3px 0 0;
+      accent-color: var(--accent);
+    }
+
+    .task-text {
+      min-width: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .task-item.done .task-text {
+      color: #929ba0;
+      text-decoration: line-through;
+    }
+
+    .pending-task {
+      background: #fffdf6;
+    }
+
+    .pending-marker {
+      display: inline-flex;
+      width: 18px;
+      height: 18px;
+      align-items: center;
+      justify-content: center;
+      margin-top: 2px;
+      border-radius: 50%;
+      color: #7a5200;
+      background: #fff0c2;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .pending-note {
+      align-self: center;
+      color: #7a5200;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .empty-state,
+    .loading-state,
+    .error-state {
+      padding: 30px 14px;
+      border: 1px dashed #cbd4d9;
+      border-radius: 9px;
+      color: var(--muted);
+      text-align: center;
+      background: #fbfcfc;
+    }
+
+    .error-state {
+      border-color: #e6baba;
+      color: var(--danger);
+      background: #fff7f7;
+    }
+
+    dialog {
+      width: min(520px, calc(100% - 32px));
+      padding: 0;
+      border: 0;
+      border-radius: 12px;
+      color: var(--ink);
+      background: #ffffff;
+      box-shadow: 0 20px 65px rgba(0, 0, 0, 0.22);
+    }
+
+    dialog::backdrop {
+      background: rgba(25, 35, 40, 0.46);
+    }
+
+    .dialog-inner {
+      padding: 20px;
+    }
+
+    .dialog-inner h2 {
+      margin-bottom: 14px;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    #status {
+      position: fixed;
+      z-index: 20;
+      right: 18px;
+      bottom: 18px;
+      max-width: min(420px, calc(100% - 36px));
+      padding: 9px 16px;
+      border-radius: 999px;
+      color: #ffffff;
+      background: #263238;
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.2);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+
+    #status.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #status.error {
+      background: #9e3030;
+    }
+
+    @media (max-width: 720px) {
+      .add-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .task-field,
+      .form-actions {
+        grid-column: auto;
+      }
+
+      .task-item {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .task-actions {
+        grid-column: 2;
+        justify-content: flex-end;
+      }
+
+      .panel {
+        padding: 16px;
+      }
+
+      .page-header-inner,
+      main {
+        width: min(100% - 20px, 1040px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #status {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div class="page-header-inner">
+      <div class="app-mark" aria-hidden="true">✓</div>
+      <div>
+        <h1>スタログ授業タスク管理</h1>
+        <p class="header-description">年度と授業を選んで、すべてのタスクをまとめて管理できます。</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="add-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="add-heading">新しいタスクを追加</h2>
+          <p class="panel-note">授業IDを入力する必要はありません。</p>
+        </div>
+        <div class="catalog-meta">
+          <p id="catalog-status" class="catalog-status" aria-live="polite"></p>
+          <button id="btn-update-catalog" class="button small" type="button" hidden>授業一覧を更新</button>
+        </div>
+      </div>
+
+      <form id="add-form" class="add-grid">
+        <div class="field">
+          <label for="year-select">年度</label>
+          <select id="year-select" data-write disabled></select>
+        </div>
+
+        <div class="field">
+          <label for="class-search">授業名で絞り込み（任意）</label>
+          <input id="class-search" type="search" placeholder="例：プログラミング" autocomplete="off" data-write disabled>
+        </div>
+
+        <div class="field">
+          <label for="class-select">授業</label>
+          <select id="class-select" data-write disabled></select>
+        </div>
+
+        <div class="field task-field">
+          <label for="new-task-text">タスク内容</label>
+          <textarea id="new-task-text" maxlength="2000" placeholder="例：第3回レポートを提出する" required data-write disabled></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button id="btn-add" class="button primary" type="submit" data-write disabled>タスクを追加</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="tasks-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="tasks-heading">すべてのタスク</h2>
+          <p id="task-summary" class="summary"></p>
+        </div>
+        <button id="btn-refresh" class="button small" type="button" disabled>最新の状態に更新</button>
+      </div>
+      <div id="task-groups" class="task-groups" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <dialog id="edit-dialog" aria-labelledby="edit-heading">
+    <form id="edit-form" class="dialog-inner">
+      <h2 id="edit-heading">タスクを編集</h2>
+      <div class="field">
+        <label for="edit-task-text">タスク内容</label>
+        <textarea id="edit-task-text" maxlength="2000" required data-write></textarea>
+      </div>
+      <div class="dialog-actions">
+        <button id="btn-edit-cancel" class="button" type="button">キャンセル</button>
+        <button class="button primary" type="submit" data-write>保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="status" role="status" aria-live="polite"></div>
+  <script src="sync-guard.js"></script>
+  <script src="tasks.js"></script>
+</body>
+</html>

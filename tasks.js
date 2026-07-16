@@ -1,0 +1,1126 @@
+(function () {
+  "use strict";
+
+  const MODE_KEY = "__storage_mode__";
+  const CATALOG_KEY = "__class_catalog__";
+  const PARTIAL_CATALOG_KEY = "__class_catalog_home__";
+  const PENDING_ADDS_KEY = "__pending_task_adds__";
+  const PENDING_ADD_PREFIX = "__pending_task_add__:";
+  const PENDING_FLUSH_LOCK = "stalog-task-pending-flush";
+  const CLASS_LOCK_PREFIX = "stalog-task-class:";
+  const MUTATION_LOCK = "stalog-task-storage-mutation";
+  const UNKNOWN_YEAR = "unknown";
+  const CATALOG_STALE_AFTER = 24 * 60 * 60 * 1000;
+  const CATALOG_TAB_TIMEOUT = 20000;
+
+  const addForm = document.getElementById("add-form");
+  const yearSelect = document.getElementById("year-select");
+  const classSearch = document.getElementById("class-search");
+  const classSelect = document.getElementById("class-select");
+  const newTaskText = document.getElementById("new-task-text");
+  const addButton = document.getElementById("btn-add");
+  const catalogStatus = document.getElementById("catalog-status");
+  const updateCatalogButton = document.getElementById("btn-update-catalog");
+  const taskGroups = document.getElementById("task-groups");
+  const taskSummary = document.getElementById("task-summary");
+  const refreshButton = document.getElementById("btn-refresh");
+  const editDialog = document.getElementById("edit-dialog");
+  const editForm = document.getElementById("edit-form");
+  const editTaskText = document.getElementById("edit-task-text");
+  const editCancelButton = document.getElementById("btn-edit-cancel");
+  const statusEl = document.getElementById("status");
+
+  let mode = "sync";
+  let storage = chrome.storage.sync;
+  let watchedArea = "sync";
+  let ready = false;
+  let busy = false;
+  let fullCatalog = emptyCatalog();
+  let partialCatalog = emptyCatalog();
+  let catalog = emptyCatalog();
+  let catalogByClassId = new Map();
+  let entries = [];
+  let pendingAdds = [];
+  let pendingStateUnknown = false;
+  let editing = null;
+  let editReturnFocus = null;
+  let statusTimer = null;
+  let refreshTimer = null;
+  let refreshAfterBusy = false;
+  let flushAfterBusy = false;
+  let flushingPending = false;
+  let catalogRefreshAttempted = false;
+  let catalogTabId = null;
+  let catalogTabBaseline = 0;
+  let catalogTabTimer = null;
+
+  function emptyCatalog() {
+    return { updatedAt: 0, fullUpdatedAt: 0, years: {} };
+  }
+
+  function makeError(prefix, error) {
+    const detail = error && error.message ? `: ${error.message}` : "";
+    return new Error(`${prefix}${detail}`);
+  }
+
+  function storageGet(area, keys) {
+    return new Promise((resolve, reject) => {
+      area.get(keys, (result) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        resolve(result || {});
+      });
+    });
+  }
+
+  function storageSet(area, items) {
+    return new Promise((resolve, reject) => {
+      area.set(items, () => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  function storageRemove(area, keys) {
+    return new Promise((resolve, reject) => {
+      area.remove(keys, () => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  function createTaskId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function normalizeTaskList(value, classId) {
+    const source = Array.isArray(value) ? value : [];
+    const ids = new Set();
+
+    return source
+      .filter((task) => task && typeof task.text === "string")
+      .map((task, index) => {
+        let id = typeof task.id === "string" && task.id !== ""
+          ? task.id
+          : `legacy-${classId}-${index}`;
+        if (ids.has(id)) id = `${id}-${index}`;
+        ids.add(id);
+        return { id, text: task.text, done: task.done === true };
+      });
+  }
+
+  function normalizeEntry(value, classId) {
+    if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
+      return {
+        subject: typeof value.subject === "string" ? value.subject.trim() : "",
+        tasks: normalizeTaskList(value.tasks, classId)
+      };
+    }
+
+    if (Array.isArray(value)) {
+      return { subject: "", tasks: normalizeTaskList(value, classId) };
+    }
+
+    if (typeof value === "string" && value.trim() !== "") {
+      return {
+        subject: "",
+        tasks: [{ id: `legacy-${classId}-0`, text: value, done: false }]
+      };
+    }
+
+    return { subject: "", tasks: [] };
+  }
+
+  function normalizeCatalog(value) {
+    const result = emptyCatalog();
+    if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+    if (typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt)) {
+      result.updatedAt = value.updatedAt;
+    }
+    if (typeof value.fullUpdatedAt === "number" && Number.isFinite(value.fullUpdatedAt)) {
+      result.fullUpdatedAt = value.fullUpdatedAt;
+    }
+    if (!value.years || typeof value.years !== "object" || Array.isArray(value.years)) {
+      return result;
+    }
+
+    Object.entries(value.years).forEach(([year, classes]) => {
+      if (!/^\d{4}$/.test(year) || !Array.isArray(classes)) return;
+      const seen = new Set();
+      const clean = [];
+      classes.forEach((item) => {
+        if (!item || typeof item !== "object") return;
+        const classId = typeof item.classId === "string" || typeof item.classId === "number"
+          ? String(item.classId).trim()
+          : "";
+        const subject = typeof item.subject === "string" ? item.subject.trim() : "";
+        if (!classId || classId.startsWith("__") || !subject || seen.has(classId)) return;
+        seen.add(classId);
+        clean.push({ classId, subject });
+      });
+      clean.sort((a, b) => a.subject.localeCompare(b.subject, "ja"));
+      result.years[year] = clean;
+    });
+
+    return result;
+  }
+
+  function combineCatalogs(full, partial) {
+    const result = emptyCatalog();
+    const byYear = new Map();
+
+    // ホーム補助を先に入れ、同じ年度・授業IDはマイページ完全一覧を正とする。
+    [partial, full].forEach((source) => {
+      Object.entries(source.years).forEach(([year, classes]) => {
+        if (!byYear.has(year)) byYear.set(year, new Map());
+        classes.forEach((item) => byYear.get(year).set(item.classId, item));
+      });
+    });
+
+    byYear.forEach((classes, year) => {
+      result.years[year] = [...classes.values()].sort((a, b) =>
+        a.subject.localeCompare(b.subject, "ja")
+      );
+    });
+    result.updatedAt = Math.max(full.updatedAt || 0, partial.updatedAt || 0);
+    result.fullUpdatedAt = full.fullUpdatedAt || 0;
+    return result;
+  }
+
+  function normalizePendingAdds(value) {
+    if (!Array.isArray(value)) return [];
+    const ids = new Set();
+
+    return value.flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const id = typeof item.id === "string" ? item.id.trim() : "";
+      const classId = typeof item.classId === "string" || typeof item.classId === "number"
+        ? String(item.classId).trim()
+        : "";
+      const subject = typeof item.subject === "string" ? item.subject.trim() : "";
+      const text = typeof item.text === "string" ? item.text.trim() : "";
+      const year = typeof item.year === "string" && /^\d{4}$/.test(item.year)
+        ? item.year
+        : UNKNOWN_YEAR;
+      const createdAt = typeof item.createdAt === "number" && Number.isFinite(item.createdAt)
+        ? item.createdAt
+        : 0;
+      if (!id || ids.has(id) || !/^\d+$/.test(classId) || !text) return [];
+      ids.add(id);
+      return [{ id, classId, subject, text, year, createdAt }];
+    });
+  }
+
+  function pendingAddsFromStorage(items) {
+    const dynamic = Object.entries(items || {})
+      .filter(([key]) => key.startsWith(PENDING_ADD_PREFIX))
+      .flatMap(([key, value]) => {
+        const normalized = normalizePendingAdds([value]);
+        if (normalized.length !== 1) return [];
+        return key === `${PENDING_ADD_PREFIX}${normalized[0].id}` ? normalized : [];
+      });
+    const legacy = Array.isArray(items?.[PENDING_ADDS_KEY]) ? items[PENDING_ADDS_KEY] : [];
+    return normalizePendingAdds([...dynamic, ...legacy]);
+  }
+
+  function withLock(name, callback) {
+    if (navigator.locks && typeof navigator.locks.request === "function") {
+      return navigator.locks.request(name, { mode: "exclusive" }, callback);
+    }
+    return callback();
+  }
+
+  async function readPendingAdds() {
+    const items = await storageGet(chrome.storage.local, null);
+    const result = pendingAddsFromStorage(items);
+    pendingStateUnknown = false;
+    return result;
+  }
+
+  async function appendPendingAdd(item) {
+    await storageSet(chrome.storage.local, { [`${PENDING_ADD_PREFIX}${item.id}`]: item });
+    try {
+      pendingAdds = await readPendingAdds();
+    } catch (error) {
+      pendingStateUnknown = true;
+      pendingAdds = normalizePendingAdds([...pendingAdds, item]);
+    }
+  }
+
+  async function removePendingAddIds(ids) {
+    const idSet = new Set(ids);
+    const result = await storageGet(chrome.storage.local, [PENDING_ADDS_KEY]);
+    const legacyNext = normalizePendingAdds(result[PENDING_ADDS_KEY])
+      .filter((entry) => !idSet.has(entry.id));
+    if (legacyNext.length > 0) {
+      await storageSet(chrome.storage.local, { [PENDING_ADDS_KEY]: legacyNext });
+    } else {
+      await storageRemove(chrome.storage.local, [PENDING_ADDS_KEY]);
+    }
+    await storageRemove(
+      chrome.storage.local,
+      ids.map((id) => `${PENDING_ADD_PREFIX}${id}`)
+    );
+    try {
+      pendingAdds = await readPendingAdds();
+    } catch (error) {
+      pendingStateUnknown = true;
+      pendingAdds = pendingAdds.filter((entry) => !idSet.has(entry.id));
+    }
+  }
+
+  function yearKeys() {
+    return Object.keys(catalog.years).sort((a, b) => Number(b) - Number(a));
+  }
+
+  function rebuildCatalogIndex() {
+    catalogByClassId = new Map();
+    yearKeys().forEach((year) => {
+      catalog.years[year].forEach((item) => {
+        if (!catalogByClassId.has(item.classId)) {
+          catalogByClassId.set(item.classId, { ...item, year });
+        }
+      });
+    });
+  }
+
+  function readTaskEntries(items) {
+    return Object.entries(items)
+      .filter(([key]) => !key.startsWith("__"))
+      .map(([classId, value]) => {
+        const entry = normalizeEntry(value, classId);
+        const classInfo = catalogByClassId.get(classId);
+        return {
+          classId,
+          subject: entry.subject || (classInfo && classInfo.subject) || `授業（${classId}）`,
+          year: classInfo ? classInfo.year : UNKNOWN_YEAR,
+          tasks: entry.tasks
+        };
+      })
+      .filter((entry) => entry.tasks.length > 0);
+  }
+
+  function showStatus(message, isError, persistent) {
+    clearTimeout(statusTimer);
+    statusEl.textContent = message;
+    statusEl.classList.toggle("error", !!isError);
+    statusEl.classList.add("show");
+    statusTimer = null;
+    if (!persistent) {
+      statusTimer = setTimeout(() => statusEl.classList.remove("show"), isError ? 6500 : 3000);
+    }
+  }
+
+  function showSyncStatus() {
+    const pendingText = pendingAdds.length > 0
+      ? `追加した${pendingAdds.length}件は端末に保留し、確認後に自動保存します。`
+      : "この間も新しいタスクは追加できます。";
+    showStatus(`同期中です… ${pendingText}`, false, true);
+  }
+
+  function renderFatal(message) {
+    const box = document.createElement("div");
+    box.className = "error-state";
+    box.textContent = message;
+    taskGroups.replaceChildren(box);
+    taskSummary.textContent = "";
+  }
+
+  function updateControls() {
+    const catalogAvailable = yearKeys().some((year) => catalog.years[year].length > 0);
+    const hasSelectedClass = catalogAvailable && classSelect.value !== "";
+    yearSelect.disabled = busy || !catalogAvailable;
+    classSearch.disabled = busy || !catalogAvailable;
+    classSelect.disabled = busy || !hasSelectedClass;
+    newTaskText.disabled = busy || !hasSelectedClass;
+    addButton.disabled = busy || !hasSelectedClass;
+
+    taskGroups.querySelectorAll("[data-write]").forEach((element) => {
+      element.disabled = !ready || busy;
+    });
+    editForm.querySelectorAll("[data-write]").forEach((element) => {
+      element.disabled = !ready || busy;
+    });
+    refreshButton.disabled = !ready || busy;
+    updateCatalogButton.disabled = busy;
+  }
+
+  function setBusy(value) {
+    busy = value;
+    updateControls();
+  }
+
+  function finishBusy() {
+    setBusy(false);
+    if (flushAfterBusy && ready) {
+      flushAfterBusy = false;
+      refreshAfterBusy = false;
+      void flushPendingAdds();
+      return;
+    }
+    if (refreshAfterBusy) {
+      refreshAfterBusy = false;
+      scheduleRefresh();
+    }
+  }
+
+  function renderCatalogControls(preserveYear) {
+    const years = yearKeys();
+    const previousYear = preserveYear ? yearSelect.value : "";
+    yearSelect.replaceChildren();
+
+    years.forEach((year) => {
+      const option = document.createElement("option");
+      option.value = year;
+      option.textContent = `${year}年度`;
+      yearSelect.appendChild(option);
+    });
+
+    if (previousYear && years.includes(previousYear)) {
+      yearSelect.value = previousYear;
+    } else if (years.length > 0) {
+      yearSelect.value = years[0];
+    }
+
+    renderClassOptions();
+
+    const classCount = years.reduce((sum, year) => sum + catalog.years[year].length, 0);
+    const stale = !catalog.fullUpdatedAt || Date.now() - catalog.fullUpdatedAt > CATALOG_STALE_AFTER;
+    updateCatalogButton.hidden = classCount > 0 && !stale;
+    if (classCount === 0) {
+      catalogStatus.textContent = "授業一覧がありません。背景でスタログのマイページから取得しています。";
+    } else if (!catalog.fullUpdatedAt) {
+      catalogStatus.textContent = `${classCount}授業をホームから仮取得済み。マイページを開くと過去年度も取得できます`;
+    } else if (catalog.updatedAt > 0) {
+      const date = new Date(catalog.fullUpdatedAt);
+      catalogStatus.textContent = Number.isNaN(date.getTime())
+        ? `${classCount}授業を取得済み`
+        : `${classCount}授業・${date.toLocaleString("ja-JP")} 更新`;
+    } else {
+      catalogStatus.textContent = `${classCount}授業を取得済み`;
+    }
+    updateControls();
+
+    if (stale && !catalogRefreshAttempted) {
+      catalogRefreshAttempted = true;
+      setTimeout(() => openCatalogPage(true), 0);
+    }
+  }
+
+  function renderClassOptions() {
+    const year = yearSelect.value;
+    const query = classSearch.value.trim().toLocaleLowerCase("ja");
+    const previousClassId = classSelect.value;
+    const classes = (catalog.years[year] || []).filter((item) =>
+      item.subject.toLocaleLowerCase("ja").includes(query)
+    );
+
+    classSelect.replaceChildren();
+    const subjectCounts = new Map();
+    classes.forEach((item) => {
+      subjectCounts.set(item.subject, (subjectCounts.get(item.subject) || 0) + 1);
+    });
+    classes.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.classId;
+      option.textContent = subjectCounts.get(item.subject) > 1
+        ? `${item.subject}（クラス ${item.classId}）`
+        : item.subject;
+      classSelect.appendChild(option);
+    });
+
+    if (classes.some((item) => item.classId === previousClassId)) {
+      classSelect.value = previousClassId;
+    }
+
+    if (classes.length === 0) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = query ? "一致する授業がありません" : "この年度に授業がありません";
+      classSelect.appendChild(option);
+    }
+    updateControls();
+  }
+
+  function makeButton(label, className, handler) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className;
+    button.textContent = label;
+    button.dataset.write = "";
+    button.disabled = !ready || busy;
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  function visiblePendingAdds() {
+    const storedIds = new Set();
+    entries.forEach((entry) => {
+      entry.tasks.forEach((task) => storedIds.add(`${entry.classId}\u0000${task.id}`));
+    });
+    return pendingAdds.filter((item) => !storedIds.has(`${item.classId}\u0000${item.id}`));
+  }
+
+  function renderPendingSection(items) {
+    const group = document.createElement("section");
+    group.className = "year-group pending-group";
+
+    const heading = document.createElement("h3");
+    heading.className = "year-heading";
+    const badge = document.createElement("span");
+    badge.className = "year-badge pending-badge";
+    badge.textContent = "同期確認待ち";
+    const count = document.createElement("span");
+    count.textContent = `${items.length}件`;
+    heading.append(badge, count);
+
+    const byClass = new Map();
+    items.forEach((item) => {
+      if (!byClass.has(item.classId)) byClass.set(item.classId, []);
+      byClass.get(item.classId).push(item);
+    });
+
+    const classList = document.createElement("div");
+    classList.className = "class-list";
+    [...byClass.entries()]
+      .sort(([, a], [, b]) => {
+        const aName = a[0].subject || catalogByClassId.get(a[0].classId)?.subject || "";
+        const bName = b[0].subject || catalogByClassId.get(b[0].classId)?.subject || "";
+        return aName.localeCompare(bName, "ja");
+      })
+      .forEach(([classId, tasks]) => {
+        const classInfo = catalogByClassId.get(classId);
+        const card = document.createElement("article");
+        card.className = "class-card pending-card";
+        const cardHeading = document.createElement("div");
+        cardHeading.className = "class-heading";
+        const name = document.createElement("span");
+        name.className = "class-name";
+        name.textContent = tasks[0].subject || classInfo?.subject || `授業（${classId}）`;
+        const state = document.createElement("span");
+        state.className = "task-count";
+        state.textContent = "同期後に保存";
+        cardHeading.append(name, state);
+
+        const list = document.createElement("ul");
+        list.className = "task-list";
+        tasks.forEach((task) => {
+          const item = document.createElement("li");
+          item.className = "task-item pending-task";
+          const marker = document.createElement("span");
+          marker.className = "pending-marker";
+          marker.textContent = "…";
+          marker.setAttribute("aria-hidden", "true");
+          const text = document.createElement("span");
+          text.className = "task-text";
+          text.textContent = task.text;
+          const note = document.createElement("span");
+          note.className = "pending-note";
+          note.textContent = "端末に保留済み";
+          item.append(marker, text, note);
+          list.appendChild(item);
+        });
+        card.append(cardHeading, list);
+        classList.appendChild(card);
+      });
+
+    group.append(heading, classList);
+    taskGroups.appendChild(group);
+  }
+
+  function renderTasks() {
+    const pending = visiblePendingAdds();
+    const storedTotal = entries.reduce((sum, entry) => sum + entry.tasks.length, 0);
+    const total = storedTotal + pending.length;
+    const incomplete = pending.length + entries.reduce(
+      (sum, entry) => sum + entry.tasks.filter((task) => !task.done).length,
+      0
+    );
+    taskSummary.textContent = total === 0 ? "" : `${total}件（未完了 ${incomplete}件）`;
+    taskGroups.replaceChildren();
+
+    if (pending.length > 0) renderPendingSection(pending);
+
+    if (storedTotal === 0) {
+      if (!ready || pending.length > 0) return;
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "タスクはまだありません。上のフォームから追加できます。";
+      taskGroups.appendChild(empty);
+      return;
+    }
+
+    const groups = new Map();
+    entries.forEach((entry) => {
+      if (!groups.has(entry.year)) groups.set(entry.year, []);
+      groups.get(entry.year).push(entry);
+    });
+
+    const orderedYears = [...groups.keys()].sort((a, b) => {
+      if (a === UNKNOWN_YEAR) return 1;
+      if (b === UNKNOWN_YEAR) return -1;
+      return Number(b) - Number(a);
+    });
+
+    orderedYears.forEach((year) => {
+      const group = document.createElement("section");
+      group.className = "year-group";
+
+      const heading = document.createElement("h3");
+      heading.className = "year-heading";
+      const badge = document.createElement("span");
+      badge.className = "year-badge";
+      badge.textContent = year === UNKNOWN_YEAR ? "年度不明" : `${year}年度`;
+      const groupCount = document.createElement("span");
+      const yearEntries = groups.get(year).sort((a, b) =>
+        a.subject.localeCompare(b.subject, "ja") || a.classId.localeCompare(b.classId, "ja")
+      );
+      groupCount.textContent = `${yearEntries.reduce((sum, entry) => sum + entry.tasks.length, 0)}件`;
+      heading.append(badge, groupCount);
+
+      const classList = document.createElement("div");
+      classList.className = "class-list";
+      yearEntries.forEach((entry) => classList.appendChild(renderClassCard(entry)));
+      group.append(heading, classList);
+      taskGroups.appendChild(group);
+    });
+  }
+
+  function renderClassCard(entry) {
+    const card = document.createElement("article");
+    card.className = "class-card";
+
+    const heading = document.createElement("div");
+    heading.className = "class-heading";
+    const name = document.createElement("span");
+    name.className = "class-name";
+    name.textContent = entry.subject;
+    const count = document.createElement("span");
+    count.className = "task-count";
+    count.textContent = `${entry.tasks.filter((task) => !task.done).length} / ${entry.tasks.length} 未完了`;
+    heading.append(name, count);
+
+    const list = document.createElement("ul");
+    list.className = "task-list";
+    entry.tasks.forEach((task) => {
+      const item = document.createElement("li");
+      item.className = `task-item${task.done ? " done" : ""}`;
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = task.done;
+      checkbox.disabled = !ready || busy;
+      checkbox.dataset.write = "";
+      checkbox.setAttribute("aria-label", `${entry.subject}「${task.text}」を${task.done ? "未完了に戻す" : "完了にする"}`);
+      checkbox.addEventListener("change", () => toggleTask(entry, task));
+
+      const text = document.createElement("span");
+      text.className = "task-text";
+      text.textContent = task.text;
+
+      const actions = document.createElement("div");
+      actions.className = "task-actions";
+      const editButton = makeButton("編集", "button small", () => openEditDialog(entry, task, editButton));
+      const deleteButton = makeButton("削除", "button small danger", () => deleteTask(entry, task));
+      actions.append(editButton, deleteButton);
+      item.append(checkbox, text, actions);
+      list.appendChild(item);
+    });
+
+    card.append(heading, list);
+    return card;
+  }
+
+  async function loadAll(options) {
+    const settings = options || {};
+    try {
+      const [localItems, taskItems] = await Promise.all([
+        storageGet(chrome.storage.local, null),
+        storageGet(storage, null)
+      ]);
+      fullCatalog = normalizeCatalog(localItems[CATALOG_KEY]);
+      partialCatalog = normalizeCatalog(localItems[PARTIAL_CATALOG_KEY]);
+      catalog = combineCatalogs(fullCatalog, partialCatalog);
+      pendingAdds = pendingAddsFromStorage(localItems);
+      pendingStateUnknown = false;
+      rebuildCatalogIndex();
+      entries = readTaskEntries(taskItems);
+      renderCatalogControls(settings.preserveYear !== false);
+      renderTasks();
+      if (!settings.silent) showStatus("最新の状態を読み込みました", false);
+      return true;
+    } catch (error) {
+      pendingStateUnknown = true;
+      renderFatal(makeError("タスクを読み込めませんでした", error).message);
+      showStatus(makeError("読み込みに失敗しました", error).message, true);
+      return false;
+    }
+  }
+
+  async function mutateClass(classId, subjectHint, mutate) {
+    if (!ready || busy) return false;
+    setBusy(true);
+    let saved = false;
+    let refreshed = true;
+    try {
+      await withLock(MUTATION_LOCK, () =>
+        withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
+          const result = await storageGet(storage, [classId]);
+          const latest = normalizeEntry(result[classId], classId);
+          const nextTasks = mutate(latest.tasks.slice());
+          if (!Array.isArray(nextTasks)) throw new Error("タスクの更新内容が正しくありません");
+          const subject = latest.subject || subjectHint || "";
+          if (nextTasks.length === 0) {
+            await storageRemove(storage, [classId]);
+          } else {
+            await storageSet(storage, { [classId]: { subject, tasks: nextTasks } });
+          }
+        })
+      );
+      saved = true;
+      refreshed = await loadAll({ silent: true, preserveYear: true });
+    } catch (error) {
+      showStatus(makeError("保存できませんでした", error).message, true);
+      await loadAll({ silent: true, preserveYear: true });
+    } finally {
+      finishBusy();
+      if (saved && refreshed) showStatus("保存しました", false);
+    }
+    return saved;
+  }
+
+  async function queuePendingTask(selected, text) {
+    setBusy(true);
+    let saved = false;
+    try {
+      const item = {
+        id: createTaskId(),
+        classId: selected.classId,
+        subject: selected.subject,
+        text,
+        year: yearSelect.value,
+        createdAt: Date.now()
+      };
+      await appendPendingAdd(item);
+      saved = true;
+      renderTasks();
+      newTaskText.value = "";
+      showSyncStatus();
+    } catch (error) {
+      showStatus(makeError("タスクを端末に保留できませんでした", error).message, true, true);
+    } finally {
+      if (saved && ready) flushAfterBusy = true;
+      finishBusy();
+      if (saved) newTaskText.focus();
+    }
+    return saved;
+  }
+
+  async function flushPendingAdds() {
+    if (!ready) return false;
+    if (busy) {
+      flushAfterBusy = true;
+      return false;
+    }
+
+    setBusy(true);
+    flushingPending = true;
+    let completed = false;
+    let snapshot = [];
+    try {
+      return await withLock(PENDING_FLUSH_LOCK, () =>
+        withLock(MUTATION_LOCK, async () => {
+          snapshot = await readPendingAdds();
+          pendingAdds = snapshot;
+          renderTasks();
+
+          if (snapshot.length === 0) {
+            completed = true;
+            await loadAll({ silent: true, preserveYear: true });
+            return true;
+          }
+
+          const byClass = new Map();
+          snapshot.forEach((item) => {
+            if (!byClass.has(item.classId)) byClass.set(item.classId, []);
+            byClass.get(item.classId).push(item);
+          });
+
+          for (const [classId, additions] of byClass) {
+            await withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
+              const result = await storageGet(storage, [classId]);
+              const latest = normalizeEntry(result[classId], classId);
+              const knownIds = new Set(latest.tasks.map((task) => task.id));
+              additions.forEach((item) => {
+                if (knownIds.has(item.id)) return;
+                latest.tasks.push({ id: item.id, text: item.text, done: false });
+                knownIds.add(item.id);
+              });
+              const subject = latest.subject || additions[0].subject || "";
+              await storageSet(storage, { [classId]: { subject, tasks: latest.tasks } });
+            });
+            await removePendingAddIds(additions.map((item) => item.id));
+          }
+
+          completed = true;
+          await loadAll({ silent: true, preserveYear: true });
+          showStatus(`${snapshot.length}件のタスクを同期データへ保存しました`, false);
+          return true;
+        })
+      );
+    } catch (error) {
+      try {
+        pendingAdds = await readPendingAdds();
+      } catch (readError) {
+        pendingStateUnknown = true;
+      }
+      renderTasks();
+      showStatus(
+        makeError("保留中のタスクを保存できませんでした。次回もう一度試します", error).message,
+        true,
+        true
+      );
+      return false;
+    } finally {
+      flushingPending = false;
+      if (completed && pendingAdds.length > 0) flushAfterBusy = true;
+      finishBusy();
+    }
+  }
+
+  function selectedClass() {
+    const year = yearSelect.value;
+    const classId = classSelect.value;
+    return (catalog.years[year] || []).find((item) => item.classId === classId) || null;
+  }
+
+  async function addTask(event) {
+    event.preventDefault();
+    const selected = selectedClass();
+    const text = newTaskText.value.trim();
+    if (!selected) {
+      showStatus("追加先の授業を選んでください", true);
+      return;
+    }
+    if (!text) {
+      newTaskText.focus();
+      return;
+    }
+
+    if (!ready) {
+      await queuePendingTask(selected, text);
+      return;
+    }
+
+    const saved = await mutateClass(selected.classId, selected.subject, (tasks) => {
+      let id = createTaskId();
+      while (tasks.some((task) => task.id === id)) id = createTaskId();
+      tasks.push({ id, text, done: false });
+      return tasks;
+    });
+    if (saved) {
+      newTaskText.value = "";
+      newTaskText.focus();
+    }
+  }
+
+  function toggleTask(entry, task) {
+    mutateClass(entry.classId, entry.subject, (tasks) => {
+      const index = tasks.findIndex((item) => item.id === task.id);
+      if (index < 0) throw new Error("このタスクは別の画面で削除されています");
+      tasks[index] = { ...tasks[index], done: !tasks[index].done };
+      return tasks;
+    });
+  }
+
+  function openEditDialog(entry, task, returnFocus) {
+    if (!ready || busy) return;
+    editing = { classId: entry.classId, subject: entry.subject, taskId: task.id };
+    editReturnFocus = returnFocus;
+    editTaskText.value = task.text;
+    editDialog.showModal();
+    editTaskText.focus();
+    editTaskText.select();
+  }
+
+  function closeEditDialog() {
+    if (editDialog.open) editDialog.close();
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault();
+    if (!editing) return;
+    const text = editTaskText.value.trim();
+    if (!text) {
+      editTaskText.focus();
+      return;
+    }
+    const target = { ...editing };
+    closeEditDialog();
+    await mutateClass(target.classId, target.subject, (tasks) => {
+      const index = tasks.findIndex((task) => task.id === target.taskId);
+      if (index < 0) throw new Error("このタスクは別の画面で削除されています");
+      tasks[index] = { ...tasks[index], text };
+      return tasks;
+    });
+  }
+
+  function deleteTask(entry, task) {
+    if (!window.confirm(`「${task.text}」を削除しますか？`)) return;
+    mutateClass(entry.classId, entry.subject, (tasks) => {
+      const index = tasks.findIndex((item) => item.id === task.id);
+      if (index < 0) throw new Error("このタスクは別の画面ですでに削除されています");
+      tasks.splice(index, 1);
+      return tasks;
+    });
+  }
+
+  function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      if (busy) {
+        refreshAfterBusy = true;
+        return;
+      }
+      loadAll({ silent: true, preserveYear: true });
+    }, 120);
+  }
+
+  function openCatalogPage(automatic) {
+    if (catalogTabId !== null) {
+      if (!automatic) {
+        showStatus("授業一覧を取得する背景タブはすでに開いています", false);
+      }
+      return;
+    }
+
+    catalogTabBaseline = catalog.fullUpdatedAt || 0;
+    chrome.tabs.create({
+      url: "https://portal.iwasaki.ac.jp/portal/lmsinc/sMyPage.php",
+      active: false
+    }, (tab) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        showStatus(makeError("スタログのマイページを背景で開けませんでした", error).message, true, true);
+        return;
+      }
+      if (!tab || typeof tab.id !== "number") {
+        showStatus("スタログの背景タブを確認できませんでした", true, true);
+        return;
+      }
+
+      catalogTabId = tab.id;
+      clearTimeout(catalogTabTimer);
+      catalogTabTimer = setTimeout(() => {
+        catalogTabTimer = null;
+        if (catalogTabId !== tab.id) return;
+        const message = "授業一覧を取得できませんでした。背景タブでログイン状態を確認してください。";
+        showStatus(!ready ? `同期中です… ${message}` : message, true, true);
+      }, CATALOG_TAB_TIMEOUT);
+
+      if (!ready) {
+        showSyncStatus();
+      } else {
+        showStatus("マイページを背景で開き、授業一覧を取得しています…", false, true);
+      }
+    });
+  }
+
+  function completeCatalogTab(message, sender) {
+    if (!message || message.type !== "class-catalog-updated") return;
+    if (catalogTabId === null || sender?.tab?.id !== catalogTabId) return;
+    const fullUpdatedAt = Number(message.fullUpdatedAt) || 0;
+    if (fullUpdatedAt <= catalogTabBaseline) return;
+
+    const completedTabId = catalogTabId;
+    catalogTabId = null;
+    catalogTabBaseline = 0;
+    clearTimeout(catalogTabTimer);
+    catalogTabTimer = null;
+    chrome.tabs.remove(completedTabId, () => {
+      // ユーザーが同時に閉じていても、カタログの保存自体は完了している。
+      void chrome.runtime.lastError;
+    });
+
+    if (!ready) {
+      showSyncStatus();
+    } else {
+      showStatus("授業一覧を更新しました", false);
+    }
+  }
+
+  function handleCatalogTabRemoved(tabId) {
+    if (tabId !== catalogTabId) return;
+    const wasLoading = catalogTabTimer !== null;
+    catalogTabId = null;
+    catalogTabBaseline = 0;
+    clearTimeout(catalogTabTimer);
+    catalogTabTimer = null;
+    if (!wasLoading) return;
+    if (!ready) {
+      showSyncStatus();
+    } else {
+      showStatus("授業一覧を取得する背景タブが閉じられました", true);
+    }
+  }
+
+  async function handlePendingStorageChange() {
+    try {
+      pendingAdds = await readPendingAdds();
+      renderTasks();
+      if (!ready) {
+        showSyncStatus();
+        return;
+      }
+      if (pendingAdds.length === 0 || flushingPending) return;
+      if (busy) {
+        flushAfterBusy = true;
+      } else {
+        void flushPendingAdds();
+      }
+    } catch (error) {
+      pendingStateUnknown = true;
+      showStatus(makeError("保留タスクの状態を確認できませんでした", error).message, true, true);
+    }
+  }
+
+  function onStorageChanged(changes, areaName) {
+    if (areaName === "local" && changes[MODE_KEY]) {
+      const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
+      if (nextMode !== mode) {
+        mode = nextMode;
+        storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
+        watchedArea = mode;
+        if (busy) {
+          refreshAfterBusy = true;
+        } else {
+          scheduleRefresh();
+        }
+        showStatus(mode === "local" ? "保存先をこの端末に切り替えました" : "保存先を同期領域に切り替えました", false);
+      }
+      return;
+    }
+
+    const catalogChanged = areaName === "local"
+      && (!!changes[CATALOG_KEY] || !!changes[PARTIAL_CATALOG_KEY]);
+    const pendingChanged = areaName === "local"
+      && Object.keys(changes).some((key) =>
+        key === PENDING_ADDS_KEY || key.startsWith(PENDING_ADD_PREFIX)
+      );
+    if (catalogChanged) {
+      if (changes[CATALOG_KEY]) {
+        fullCatalog = normalizeCatalog(changes[CATALOG_KEY].newValue);
+      }
+      if (changes[PARTIAL_CATALOG_KEY]) {
+        partialCatalog = normalizeCatalog(changes[PARTIAL_CATALOG_KEY].newValue);
+      }
+      catalog = combineCatalogs(fullCatalog, partialCatalog);
+      rebuildCatalogIndex();
+      renderCatalogControls(true);
+      renderTasks();
+    }
+    if (pendingChanged) {
+      void handlePendingStorageChange();
+    }
+
+    // 同期ガードが開くまでは、同期領域の内容を画面にも読み込まない。
+    // この間も端末ローカルの授業一覧と保留キューだけは上で反映する。
+    if (!ready) return;
+
+    const tasksChanged = areaName === watchedArea && Object.keys(changes).some((key) => !key.startsWith("__"));
+    if (!catalogChanged && !tasksChanged) return;
+    if (busy) {
+      refreshAfterBusy = true;
+      return;
+    }
+    scheduleRefresh();
+  }
+
+  yearSelect.addEventListener("change", () => {
+    classSearch.value = "";
+    renderClassOptions();
+  });
+  classSearch.addEventListener("input", renderClassOptions);
+  addForm.addEventListener("submit", addTask);
+  refreshButton.addEventListener("click", () => {
+    if (pendingAdds.length > 0) {
+      void flushPendingAdds();
+    } else {
+      void loadAll({ silent: false, preserveYear: true }).then((loaded) => {
+        if (loaded && pendingAdds.length > 0) void flushPendingAdds();
+      });
+    }
+  });
+  updateCatalogButton.addEventListener("click", () => openCatalogPage(false));
+  editForm.addEventListener("submit", saveEdit);
+  editCancelButton.addEventListener("click", closeEditDialog);
+  editDialog.addEventListener("close", () => {
+    editing = null;
+    if (editReturnFocus && editReturnFocus.isConnected) editReturnFocus.focus();
+    editReturnFocus = null;
+  });
+  chrome.storage.onChanged.addListener(onStorageChanged);
+  chrome.runtime.onMessage.addListener(completeCatalogTab);
+  chrome.tabs.onRemoved.addListener(handleCatalogTabRemoved);
+
+  window.addEventListener("beforeunload", (event) => {
+    const syncInProgress = mode === "sync" && !ready;
+    if (!syncInProgress && !busy && pendingAdds.length === 0 && !pendingStateUnknown) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  storageGet(chrome.storage.local, null)
+    .then((result) => {
+      mode = result[MODE_KEY] === "local" ? "local" : "sync";
+      storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
+      watchedArea = mode;
+      fullCatalog = normalizeCatalog(result[CATALOG_KEY]);
+      partialCatalog = normalizeCatalog(result[PARTIAL_CATALOG_KEY]);
+      catalog = combineCatalogs(fullCatalog, partialCatalog);
+      pendingAdds = pendingAddsFromStorage(result);
+      pendingStateUnknown = false;
+      rebuildCatalogIndex();
+      renderCatalogControls(false);
+      renderTasks();
+
+      SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
+      if (!SyncGuard.isReady()) showSyncStatus();
+      SyncGuard.when(() => {
+        ready = true;
+        updateControls();
+        renderTasks();
+        if (busy) {
+          flushAfterBusy = true;
+          return;
+        }
+        if (pendingAdds.length > 0) {
+          void flushPendingAdds();
+          return;
+        }
+        void loadAll({ silent: true, preserveYear: false }).then((loaded) => {
+          if (loaded) showStatus(mode === "sync" ? "同期の確認が完了しました" : "タスクを読み込みました", false);
+        });
+      });
+    })
+    .catch((error) => {
+      renderFatal(makeError("保存先を確認できませんでした", error).message);
+      showStatus(makeError("初期化に失敗しました", error).message, true);
+    });
+})();

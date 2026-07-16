@@ -8,7 +8,23 @@
   const HAS_TEXT_CLASS = "lms-memo-has-text";
   // 保存先モード（設定ページで切り替え）: "sync" = Google アカウントで同期 / "local" = この端末のみ
   const MODE_KEY = "__storage_mode__";
+  const MUTATION_LOCK = "stalog-task-storage-mutation";
+  const CLASS_LOCK_PREFIX = "stalog-task-class:";
   let storage = chrome.storage.sync;
+  let storageMode = "sync";
+
+  function runClassMutation(classId, operation) {
+    const run = () => new Promise((resolve) => operation(resolve));
+    const withClassLock = () => navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request(`${CLASS_LOCK_PREFIX}${classId}`, { mode: "exclusive" }, run)
+      : run();
+    const pending = navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request(MUTATION_LOCK, { mode: "exclusive" }, withClassLock)
+      : withClassLock();
+    pending.catch((error) => {
+      alert(`タスクを保存できませんでした: ${error.message}`);
+    });
+  }
 
   // Material Symbols (https://fonts.google.com/icons) の SVG パス。
   // 外部フォント読み込みはページの CSP に阻まれる可能性があるためインライン SVG で埋め込む。
@@ -24,6 +40,7 @@
   // 初回同期ガード本体は sync-guard.js（content.js より先に読み込まれる）
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
     const mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    storageMode = mode;
     if (mode === "local") {
       storage = chrome.storage.local;
     }
@@ -35,6 +52,12 @@
     initClassPagePanel();
     insertNavSettingsLink();
     observeDynamicSections();
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[MODE_KEY]) return;
+    const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
+    if (nextMode !== storageMode) window.location.reload();
   });
 
   function createIcon(name, size = 16) {
@@ -403,24 +426,27 @@
   }
 
   // LMS のグローバルナビ（トップ / マイページ / メール / 設定 ...）に
-  // この拡張機能の設定ページへのリンクを追加する。
+  // この拡張機能のタスク一覧・設定ページへのリンクを追加する。
   function insertNavSettingsLink() {
-    const NAV_ITEM_ID = "lms-task-settings-item";
-    if (document.getElementById(NAV_ITEM_ID)) return;
-
     const nav = document.querySelector("ul.nav.navbar-nav.navbar-right.gnav");
     if (!nav) return;
 
-    const item = document.createElement("li");
-    item.id = NAV_ITEM_ID;
+    const addLink = (id, page, label) => {
+      if (document.getElementById(id)) return;
+      const item = document.createElement("li");
+      item.id = id;
 
-    const link = document.createElement("a");
-    link.href = chrome.runtime.getURL("settings.html");
-    link.target = "_blank";
-    link.textContent = "タスク設定";
+      const link = document.createElement("a");
+      link.href = chrome.runtime.getURL(page);
+      link.target = "_blank";
+      link.textContent = label;
 
-    item.appendChild(link);
-    nav.appendChild(item);
+      item.appendChild(link);
+      nav.appendChild(item);
+    };
+
+    addLink("lms-task-list-item", "tasks.html", "タスク一覧");
+    addLink("lms-task-settings-item", "settings.html", "タスク設定");
   }
 
   // 保存形式: { subject: string, tasks: [{id, text, done}] }
@@ -683,11 +709,13 @@
       // ponytail: マージはタスクID単位。同じタスクを複数端末で同時に編集した場合と
       // 科目名は後勝ちのまま。フィールド単位の統合が必要になったら task.updatedAt を導入する
       // 保存済みの科目名がある場合は上書きしない（授業ページでは科目名が取れないことがあるため）
-      storage.get([classId], (result) => {
+      runClassMutation(classId, (releaseMutation) => {
+        storage.get([classId], (result) => {
         if (chrome.runtime.lastError) {
           saving = false;
           saveQueue.length = 0;
           alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n変更は取り消されます。`);
+          releaseMutation();
           reloadFromStorage();
           return;
         }
@@ -701,6 +729,7 @@
           if (chrome.runtime.lastError) {
             saveQueue.length = 0;
             alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n（1授業あたりの保存容量の上限を超えている可能性があります）\n変更は取り消されます。`);
+            releaseMutation();
             reloadFromStorage();
             return;
           }
@@ -709,6 +738,7 @@
           renderList();
           onTasksChanged(tasks);
           showSavedToast();
+          releaseMutation();
           if (saveQueue.length > 0) {
             processSaveQueue();
           } else if (refreshAfterSave) {
@@ -716,6 +746,7 @@
             refreshAfterSave = false;
             reloadFromStorage();
           }
+        });
         });
       });
     }

@@ -2,7 +2,12 @@
   const MODE_KEY = "__storage_mode__";
   const SYNC_CHECK_KEY = "__sync_check__";
   const DEVICE_KEY = "__device__";
+  const PENDING_ADDS_KEY = "__pending_task_adds__";
+  const PENDING_ADD_PREFIX = "__pending_task_add__:";
+  const PENDING_FLUSH_LOCK = "stalog-task-pending-flush";
+  const MUTATION_LOCK = "stalog-task-storage-mutation";
   let mode = "sync";
+  let changingModeTo = null;
 
   const usageEl = document.getElementById("usage");
   const statusEl = document.getElementById("status");
@@ -23,6 +28,30 @@
     return Object.entries(items).filter(([key]) => !key.startsWith("__"));
   }
 
+  function runMutationExclusive(operation, includePending) {
+    const run = () => new Promise((resolve) => {
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        resolve();
+      };
+      try {
+        operation(finish);
+      } catch (error) {
+        showStatus(`操作に失敗しました: ${error.message}`);
+        finish();
+      }
+    });
+    const requestMutation = () => navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request(MUTATION_LOCK, { mode: "exclusive" }, run)
+      : run();
+    const pending = includePending && navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request(PENDING_FLUSH_LOCK, { mode: "exclusive" }, requestMutation)
+      : requestMutation();
+    pending.catch((error) => showStatus(`操作に失敗しました: ${error.message}`));
+  }
+
   function createTaskId() {
     if (typeof crypto !== "undefined" && crypto.randomUUID) {
       return crypto.randomUUID();
@@ -38,6 +67,10 @@
 
   document.getElementById("btn-open-sync-settings").addEventListener("click", () => {
     chrome.tabs.create({ url: "chrome://settings/account" });
+  });
+
+  document.getElementById("btn-open-tasks").addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("tasks.html") });
   });
 
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
@@ -214,6 +247,12 @@
 
   // 他の端末が印を書き込んだらリアルタイムで反映する（＝同期が動いている証拠）
   chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes[MODE_KEY]
+      && changes[MODE_KEY].newValue !== mode) {
+      if (changes[MODE_KEY].newValue === changingModeTo) return;
+      window.location.reload();
+      return;
+    }
     if (areaName === "sync" && changes[SYNC_CHECK_KEY]) {
       renderSyncCheck();
     }
@@ -252,10 +291,30 @@
         });
       };
 
-      source.get(null, (items) => {
+      runMutationExclusive((releaseMutation) => {
+        chrome.storage.local.get(null, (localItems) => {
+          if (chrome.runtime.lastError || !localItems) {
+            showStatus(`保留タスクの確認に失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+            revertRadios();
+            releaseMutation();
+            return;
+          }
+          const hasPending = Object.entries(localItems).some(([key, value]) =>
+            key.startsWith(PENDING_ADD_PREFIX)
+            || key === PENDING_ADDS_KEY && Array.isArray(value) && value.length > 0
+          );
+          if (hasPending) {
+            showStatus("同期確認待ちのタスクがあります。専用タスク画面で保存完了後に切り替えてください");
+            revertRadios();
+            releaseMutation();
+            return;
+          }
+
+          source.get(null, (items) => {
         if (chrome.runtime.lastError || !items) {
           showStatus(`現在のデータの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
           revertRadios();
+          releaseMutation();
           return;
         }
 
@@ -265,6 +324,7 @@
           if (chrome.runtime.lastError || !targetItems) {
             showStatus(`切り替え先のデータの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
             revertRadios();
+            releaseMutation();
             return;
           }
 
@@ -277,17 +337,22 @@
           const applyMode = () => {
             // モードの保存が成功してから内部状態を切り替える（先に切り替えると、
             // 保存失敗時にその画面だけ切り替わったように見えて再起動後に元へ戻る）
+            changingModeTo = newMode;
             chrome.storage.local.set({ [MODE_KEY]: newMode }, () => {
               if (chrome.runtime.lastError) {
+                changingModeTo = null;
                 showStatus(`切り替えの保存に失敗しました: ${chrome.runtime.lastError.message}（タスクのコピーは完了していますが、保存先は元のままです）`);
                 revertRadios();
                 refreshUsage();
+                releaseMutation();
                 return;
               }
               mode = newMode;
+              changingModeTo = null;
               updateSyncGuide();
               refreshUsage();
               showStatus(`保存先を「${label}」に切り替えました`);
+              releaseMutation();
             });
           };
 
@@ -302,6 +367,7 @@
                 showStatus(`古いデータの削除に失敗しました: ${chrome.runtime.lastError.message}（タスクのコピーは完了していますが、保存先は元のままです。もう一度お試しください）`);
                 revertRadios();
                 refreshUsage();
+                releaseMutation();
                 return;
               }
               applyMode();
@@ -318,13 +384,16 @@
             if (chrome.runtime.lastError) {
               showStatus(`コピーに失敗しました: ${chrome.runtime.lastError.message}`);
               revertRadios();
+              releaseMutation();
               return;
             }
             removeStale();
           });
         });
       });
-    });
+        });
+    }, true);
+  });
   });
 
   function refreshUsage() {
@@ -457,14 +526,18 @@
         return;
       }
 
-      currentArea().set(clean, () => {
-        if (chrome.runtime.lastError) {
-          showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
-          return;
-        }
-        refreshUsage();
-        showStatus("インポートしました");
-      });
+      runMutationExclusive((releaseMutation) => {
+        currentArea().set(clean, () => {
+          if (chrome.runtime.lastError) {
+            showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
+            releaseMutation();
+            return;
+          }
+          refreshUsage();
+          showStatus("インポートしました");
+          releaseMutation();
+        });
+      }, true);
     };
     reader.readAsText(file);
     // 読み込み結果に関わらず入力をリセットする（残っていると同じファイルを
@@ -478,9 +551,11 @@
     if (!confirm("すべての授業から完了済みタスクを削除します。よろしいですか？")) return;
 
     const area = currentArea();
-    area.get(null, (items) => {
+    runMutationExclusive((releaseMutation) => {
+      area.get(null, (items) => {
       if (chrome.runtime.lastError || !items) {
         showStatus(`データの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+        releaseMutation();
         return;
       }
       const updates = {};
@@ -502,11 +577,13 @@
       const finish = () => {
         refreshUsage();
         showStatus("完了済みタスクを削除しました");
+        releaseMutation();
       };
 
       const fail = (action) => {
         refreshUsage();
         showStatus(`${action}に失敗しました: ${chrome.runtime.lastError.message}`);
+        releaseMutation();
       };
 
       const runRemovals = () => {
@@ -535,8 +612,10 @@
         runRemovals();
       } else {
         showStatus("完了済みタスクはありませんでした");
+        releaseMutation();
       }
-    });
+      });
+    }, true);
   });
 
   document.getElementById("btn-clear-all").addEventListener("click", () => {
@@ -544,25 +623,72 @@
     if (!confirm("保存されているすべてのタスクを削除します。この操作は元に戻せません。よろしいですか？")) return;
 
     const area = currentArea();
-    area.get(null, (items) => {
-      if (chrome.runtime.lastError || !items) {
-        showStatus(`データの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
-        return;
-      }
-      const keys = taskEntries(items).map(([key]) => key);
-      if (keys.length === 0) {
-        showStatus("削除するデータはありませんでした");
-        return;
-      }
-      area.remove(keys, () => {
-        if (chrome.runtime.lastError) {
-          refreshUsage();
-          showStatus(`削除に失敗しました: ${chrome.runtime.lastError.message}`);
+    runMutationExclusive((releaseMutation) => {
+      area.get(null, (items) => {
+        if (chrome.runtime.lastError || !items) {
+          showStatus(`データの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+          releaseMutation();
           return;
         }
-        refreshUsage();
-        showStatus("すべてのデータを削除しました");
+        const keys = taskEntries(items).map(([key]) => key);
+        chrome.storage.local.get(null, (localItems) => {
+          if (chrome.runtime.lastError) {
+            refreshUsage();
+            showStatus(`保留タスクの確認に失敗しました: ${chrome.runtime.lastError.message}`);
+            releaseMutation();
+            return;
+          }
+
+          const pendingKeys = Object.keys(localItems).filter((key) =>
+            key === PENDING_ADDS_KEY || key.startsWith(PENDING_ADD_PREFIX)
+          );
+          const hasLegacyPending = Array.isArray(localItems[PENDING_ADDS_KEY])
+            && localItems[PENDING_ADDS_KEY].length > 0;
+          const hasPending = hasLegacyPending
+            || pendingKeys.some((key) => key.startsWith(PENDING_ADD_PREFIX));
+          if (keys.length === 0 && !hasPending) {
+            showStatus("削除するデータはありませんでした");
+            releaseMutation();
+            return;
+          }
+
+          const removeTasks = () => {
+            if (keys.length === 0) {
+              refreshUsage();
+              showStatus("すべてのデータを削除しました");
+              releaseMutation();
+              return;
+            }
+
+            area.remove(keys, () => {
+              if (chrome.runtime.lastError) {
+                refreshUsage();
+                showStatus(`削除に失敗しました: ${chrome.runtime.lastError.message}`);
+                releaseMutation();
+                return;
+              }
+              refreshUsage();
+              showStatus("すべてのデータを削除しました");
+              releaseMutation();
+            });
+          };
+
+          // 保留分もタスクデータなので先に消し、次回の自動反映で復活しないようにする。
+          if (pendingKeys.length === 0) {
+            removeTasks();
+            return;
+          }
+          chrome.storage.local.remove(pendingKeys, () => {
+            if (chrome.runtime.lastError) {
+              refreshUsage();
+              showStatus(`保留タスクの削除に失敗しました: ${chrome.runtime.lastError.message}`);
+              releaseMutation();
+              return;
+            }
+            removeTasks();
+          });
+        });
       });
-    });
+    }, true);
   });
 })();
