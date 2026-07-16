@@ -337,6 +337,7 @@
 
       SyncGuard.when(() => {
         storage.get([classId], (result) => {
+          if (chrome.runtime.lastError || !result) return;
           updateButtonState(button, result[classId]);
         });
       });
@@ -522,11 +523,46 @@
     SyncGuard.when(() => {
       addButton.disabled = false;
       storage.get([classId], (result) => {
-        const entry = normalizeEntry(result[classId]);
-        tasks = entry.tasks;
+        if (chrome.runtime.lastError || !result) {
+          listEl.innerHTML = "";
+          const failed = document.createElement("li");
+          failed.className = "lms-task-empty";
+          failed.textContent = `タスクを読み込めませんでした${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`;
+          listEl.appendChild(failed);
+          return;
+        }
+        tasks = normalizeEntry(result[classId]).tasks;
         renderList();
       });
     });
+
+    // 他の端末（や別タブ）でこの授業のタスクが変更されたら、開いている画面へ反映する。
+    // 古い一覧を見たまま操作し続けるのを防ぐ
+    const watchedArea = storage === chrome.storage.sync ? "sync" : "local";
+    const onStorageChanged = (changes, changedArea) => {
+      // 破棄漏れに備えた保険（正規の解除はポップアップを閉じるときの destroy()）
+      if (!body.isConnected) {
+        destroy();
+        return;
+      }
+      if (changedArea !== watchedArea || !changes[classId]) return;
+      // 自分の保存処理中に届いた変更はここでは反映できないため、
+      // 保存完了後にストレージを読み直すよう印を付けておく
+      if (saving) {
+        refreshAfterSave = true;
+        return;
+      }
+      const next = normalizeEntry(changes[classId].newValue).tasks;
+      if (JSON.stringify(next) === JSON.stringify(tasks)) return;
+      tasks = next;
+      renderList();
+      onTasksChanged(tasks);
+    };
+    chrome.storage.onChanged.addListener(onStorageChanged);
+
+    function destroy() {
+      chrome.storage.onChanged.removeListener(onStorageChanged);
+    }
 
     function renderList() {
       listEl.innerHTML = "";
@@ -546,9 +582,10 @@
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = task.done;
+        checkbox.setAttribute("aria-label", `完了: ${task.text}`);
         checkbox.addEventListener("change", () => {
           task.done = checkbox.checked;
-          persist();
+          persist({ type: "upsert", task: { ...task } });
           renderList();
         });
 
@@ -571,7 +608,7 @@
         deleteBtn.appendChild(createIcon("delete", 15));
         deleteBtn.addEventListener("click", () => {
           tasks = tasks.filter((t) => t.id !== task.id);
-          persist();
+          persist({ type: "remove", id: task.id });
           renderList();
         });
 
@@ -596,21 +633,89 @@
       onFormToggle(false);
     }
 
-    function persist() {
-      // ponytail: 授業キー単位の後勝ち保存。複数端末で同じ授業を同時編集すると
-      // 後に書いた側が丸ごと勝つ。タスク単位のマージが必要になったら
-      // task.updatedAt を導入して統合する
+    // 保存はタスクID単位の操作（upsert / remove）として扱い、保存直前に読み直した
+    // ストレージの最新タスク一覧へ適用する。画面を開いたまま他の端末で追加された
+    // タスクを、古い画面からの保存で丸ごと消さないため。
+    // 操作はキューで1件ずつ処理し、保存中の連打で読み書きが交錯しないようにする。
+    const saveQueue = [];
+    let saving = false;
+    // 保存中に他の端末からの変更通知が届いたら、保存完了後に読み直すための印
+    let refreshAfterSave = false;
+
+    function applyOp(list, op) {
+      if (op.type === "remove") {
+        return list.filter((t) => t.id !== op.id);
+      }
+      const index = list.findIndex((t) => t.id === op.task.id);
+      if (index >= 0) {
+        const next = list.slice();
+        next[index] = op.task;
+        return next;
+      }
+      return [...list, op.task];
+    }
+
+    function persist(op) {
+      saveQueue.push(op);
+      processSaveQueue();
+    }
+
+    // 保存に失敗したときなどにストレージの内容を正として画面を戻す
+    function reloadFromStorage() {
+      storage.get([classId], (result) => {
+        if (chrome.runtime.lastError || !result) {
+          // 読み直しにも失敗した場合、空の一覧を表示すると全消えに見えるため
+          // 現在の画面は変えずにエラーだけ知らせる
+          showToast(`タスクを読み込めませんでした${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`);
+          return;
+        }
+        tasks = normalizeEntry(result[classId]).tasks;
+        renderList();
+        onTasksChanged(tasks);
+      });
+    }
+
+    function processSaveQueue() {
+      if (saving || saveQueue.length === 0) return;
+      saving = true;
+      const ops = saveQueue.splice(0);
+
+      // ponytail: マージはタスクID単位。同じタスクを複数端末で同時に編集した場合と
+      // 科目名は後勝ちのまま。フィールド単位の統合が必要になったら task.updatedAt を導入する
       // 保存済みの科目名がある場合は上書きしない（授業ページでは科目名が取れないことがあるため）
       storage.get([classId], (result) => {
+        if (chrome.runtime.lastError) {
+          saving = false;
+          saveQueue.length = 0;
+          alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n変更は取り消されます。`);
+          reloadFromStorage();
+          return;
+        }
+
         const existing = normalizeEntry(result[classId]);
         const subject = subjectName || existing.subject;
-        storage.set({ [classId]: { subject, tasks } }, () => {
+        const merged = ops.reduce(applyOp, existing.tasks);
+
+        storage.set({ [classId]: { subject, tasks: merged } }, () => {
+          saving = false;
           if (chrome.runtime.lastError) {
-            alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n（1授業あたりの保存容量の上限を超えている可能性があります）`);
+            saveQueue.length = 0;
+            alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n（1授業あたりの保存容量の上限を超えている可能性があります）\n変更は取り消されます。`);
+            reloadFromStorage();
             return;
           }
+          // merged には他の端末による変更も含まれているため、これを画面の正とする
+          tasks = merged;
+          renderList();
           onTasksChanged(tasks);
           showSavedToast();
+          if (saveQueue.length > 0) {
+            processSaveQueue();
+          } else if (refreshAfterSave) {
+            // 保存中に届いた外部変更を取りこぼさないよう、最新の状態を読み直す
+            refreshAfterSave = false;
+            reloadFromStorage();
+          }
         });
       });
     }
@@ -627,19 +732,27 @@
         return;
       }
 
+      let changedTask = null;
+
       if (editingTaskId) {
         const target = tasks.find((t) => t.id === editingTaskId);
-        if (target) target.text = text;
+        if (target) {
+          target.text = text;
+          changedTask = target;
+        }
       } else {
-        tasks.push({ id: createTaskId(), text, done: false });
+        changedTask = { id: createTaskId(), text, done: false };
+        tasks.push(changedTask);
       }
 
-      persist();
+      if (changedTask) {
+        persist({ type: "upsert", task: { ...changedTask } });
+      }
       closeForm();
       renderList();
     });
 
-    return { element: body };
+    return { element: body, closeForm, destroy };
   }
 
   function openTaskPopup(classId, subjectName, buttonEl) {
@@ -647,10 +760,13 @@
 
     const oldPopup = document.getElementById(POPUP_ID);
     if (oldPopup) {
-      // 前のポップアップの外側クリック用リスナーも一緒に外す（フォームを開いたまま
-      // 別の授業のポップアップを開くと、リスナーが残り続けるため）
+      // 前のポップアップの外側クリック用リスナーとストレージ監視も一緒に外す
+      // （フォームを開いたまま別の授業のポップアップを開くと、リスナーが残り続けるため）
       if (oldPopup.outsideClickHandler) {
         document.removeEventListener("mousedown", oldPopup.outsideClickHandler, true);
+      }
+      if (oldPopup.destroyManager) {
+        oldPopup.destroyManager();
       }
       oldPopup.remove();
     }
@@ -660,6 +776,9 @@
     const popup = document.createElement("div");
     popup.id = POPUP_ID;
     popup.className = "lms-memo-popup";
+    popup.setAttribute("role", "dialog");
+    popup.setAttribute("aria-label", `${subjectName} のタスク`);
+    popup.tabIndex = -1;
 
     const title = document.createElement("h3");
     title.append(createIcon("task", 18), document.createTextNode(subjectName));
@@ -677,26 +796,47 @@
     const closeButton = document.createElement("button");
     closeButton.type = "button";
     closeButton.append(createIcon("close", 14), document.createTextNode("閉じる"));
-    closeButton.addEventListener("click", () => {
-      document.removeEventListener("mousedown", handleOutsideClick, true);
-      popup.remove();
-    });
+    closeButton.addEventListener("click", () => closePopup(true));
 
     manager.element.querySelector(".lms-memo-popup-buttons").appendChild(closeButton);
 
     popup.append(title, manager.element);
+
+    // Escape でフォーム → ポップアップの順に閉じられるようにする（キーボード操作対応）
+    popup.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      if (isFormOpen) {
+        manager.closeForm();
+      } else {
+        closePopup(true);
+      }
+    });
+
     document.body.appendChild(popup);
+    popup.focus();
+
+    // focusBack: キーボード操作（Escape・閉じるボタン）で閉じたときだけ、
+    // 元のタスクボタンへフォーカスを戻す（外側クリック時はクリック先を邪魔しない）
+    function closePopup(focusBack) {
+      document.removeEventListener("mousedown", handleOutsideClick, true);
+      manager.destroy();
+      popup.remove();
+      if (focusBack && buttonEl && buttonEl.isConnected) {
+        buttonEl.focus();
+      }
+    }
 
     function handleOutsideClick(event) {
       if (isFormOpen) return;
 
       if (!popup.contains(event.target)) {
-        document.removeEventListener("mousedown", handleOutsideClick, true);
-        popup.remove();
+        closePopup(false);
       }
     }
 
     popup.outsideClickHandler = handleOutsideClick;
+    popup.destroyManager = manager.destroy;
 
     setTimeout(() => {
       document.addEventListener("mousedown", handleOutsideClick, true);

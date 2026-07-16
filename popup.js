@@ -154,19 +154,62 @@
           renderMark();
 
           mark.addEventListener("click", () => {
-            task.done = !task.done;
-            storage.set({ [entry.classId]: { subject: entry.subject, tasks: entry.tasks } }, () => {
+            // 保存が終わるまで同じボタンの連打を防ぐ（get/set が並行すると
+            // 完了状態が意図と逆になることがある）
+            if (mark.disabled) return;
+            mark.disabled = true;
+
+            const wasDone = !!task.done;
+            task.done = !wasDone;
+
+            const finish = () => {
+              mark.disabled = false;
+            };
+
+            const revert = (message) => {
+              task.done = wasDone;
+              renderMark();
+              showStatus(message);
+              finish();
+            };
+
+            // 保存直前に読み直した最新データへ、このタスクの完了状態だけを反映する。
+            // ポップアップを開いたときの配列を丸ごと保存すると、その後に他の端末で
+            // 追加されたタスクを消してしまうため
+            storage.get([entry.classId], (result) => {
               if (chrome.runtime.lastError) {
-                task.done = !task.done;
-                renderMark();
-                showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
+                revert(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
                 return;
               }
-              item.classList.toggle("done", task.done);
-              mark.title = task.done ? "未完了に戻す" : "完了にする";
-              renderMark();
-              updateCount();
-              showSavedStatus();
+
+              const latest = normalizeEntry(result && result[entry.classId]);
+              const list = latest.tasks.slice();
+              let index = task.id ? list.findIndex((t) => t.id === task.id) : -1;
+              if (index < 0) {
+                // 旧形式のタスクには id が無いことがあるため、内容で照合する
+                index = list.findIndex((t) => t.text === task.text && !!t.done === wasDone);
+              }
+              if (index < 0) {
+                task.done = wasDone;
+                showStatus("このタスクは他の端末で変更されたため、一覧を読み直しました");
+                render();
+                return;
+              }
+
+              list[index] = { ...list[index], done: task.done };
+
+              storage.set({ [entry.classId]: { subject: latest.subject || entry.subject, tasks: list } }, () => {
+                if (chrome.runtime.lastError) {
+                  revert(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
+                  return;
+                }
+                item.classList.toggle("done", task.done);
+                mark.title = task.done ? "未完了に戻す" : "完了にする";
+                renderMark();
+                updateCount();
+                showSavedStatus();
+                finish();
+              });
             });
           });
 

@@ -23,6 +23,13 @@
     return Object.entries(items).filter(([key]) => !key.startsWith("__"));
   }
 
+  function createTaskId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
   const syncGuideEl = document.getElementById("sync-guide");
 
   function updateSyncGuide() {
@@ -33,14 +40,26 @@
     chrome.tabs.create({ url: "chrome://settings/account" });
   });
 
-  chrome.storage.local.get([MODE_KEY], (result) => {
+  chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
     mode = result[MODE_KEY] === "local" ? "local" : "sync";
     modeRadios.forEach((radio) => {
       radio.checked = radio.value === mode;
     });
     updateSyncGuide();
     refreshUsage();
+
+    // 設定ページは現在のモードに関わらず同期領域へ書き込む操作（保存先切替・印の書き込みなど）が
+    // あるため、常に同期の初回ダウンロード完了を確認する（"local" を渡すと即座に許可されてしまう）
+    SyncGuard.init("sync", result[SyncGuard.READY_KEY]);
   });
+
+  // 同期領域へ書き込む操作の前に呼ぶ。初回同期の確認が済んでいない間に書き込むと、
+  // まだ届いていない同期データを空の内容で上書きしてしまう可能性がある
+  function syncBlocked() {
+    if (SyncGuard.isReady()) return false;
+    showStatus("同期データを確認中です…（最大20秒）。完了後にもう一度お試しください");
+    return true;
+  }
 
   // ---- 同期チェック ----
   // 端末ごとの ID と名前は chrome.storage.local（同期されない領域）に保存し、
@@ -69,6 +88,10 @@
   function renderSyncCheck() {
     getDevice((device) => {
       chrome.storage.sync.get([SYNC_CHECK_KEY], (result) => {
+        if (chrome.runtime.lastError || !result) {
+          syncCheckListEl.textContent = `印の読み込みに失敗しました${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`;
+          return;
+        }
         const marks = result[SYNC_CHECK_KEY] || {};
         syncCheckListEl.innerHTML = "";
 
@@ -108,8 +131,14 @@
             removeBtn.textContent = "×";
             removeBtn.title = "この印を削除";
             removeBtn.addEventListener("click", () => {
+              if (syncBlocked()) return;
               if (!confirm(`「${mark.name || id}」の印を削除します。よろしいですか？`)) return;
               chrome.storage.sync.get([SYNC_CHECK_KEY], (res) => {
+                // 読み込みに失敗したまま書き戻すと、他の端末の印まで消してしまう
+                if (chrome.runtime.lastError || !res) {
+                  showStatus(`印の読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+                  return;
+                }
                 const current = res[SYNC_CHECK_KEY] || {};
                 delete current[id];
                 chrome.storage.sync.set({ [SYNC_CHECK_KEY]: current }, () => {
@@ -131,8 +160,15 @@
   }
 
   document.getElementById("btn-sync-check").addEventListener("click", () => {
+    // 初回同期前に印を書き込むと、他の端末の印を消してしまう可能性がある
+    if (syncBlocked()) return;
     getDevice((device) => {
       chrome.storage.sync.get([SYNC_CHECK_KEY], (result) => {
+        // 読み込みに失敗したまま書き戻すと、他の端末の印まで消してしまう
+        if (chrome.runtime.lastError || !result) {
+          showStatus(`印の読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+          return;
+        }
         const marks = result[SYNC_CHECK_KEY] || {};
         marks[device.id] = { name: device.name, time: Date.now() };
         chrome.storage.sync.set({ [SYNC_CHECK_KEY]: marks }, () => {
@@ -148,6 +184,8 @@
   });
 
   document.getElementById("btn-sync-rename").addEventListener("click", () => {
+    // 印が同期領域にある場合は名前の変更も同期領域へ書き込むため、確認完了を待つ
+    if (syncBlocked()) return;
     getDevice((device) => {
       const name = prompt("この端末の表示名を入力してください", device.name);
       if (!name || name.trim() === "") return;
@@ -156,6 +194,12 @@
       chrome.storage.local.set({ [DEVICE_KEY]: deviceInfo }, () => {
         // すでに印がある場合は名前も更新する
         chrome.storage.sync.get([SYNC_CHECK_KEY], (result) => {
+          // 読み込みに失敗したまま書き戻すと、他の端末の印まで消してしまう
+          if (chrome.runtime.lastError || !result) {
+            showStatus(`端末名は保存しましたが、印の名前の更新に失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+            renderSyncCheck();
+            return;
+          }
           const marks = result[SYNC_CHECK_KEY] || {};
           if (marks[device.id]) {
             marks[device.id].name = deviceInfo.name;
@@ -182,8 +226,17 @@
       const newMode = radio.value;
       if (newMode === mode) return;
 
+      // 切り替えはどちら向きでも同期領域の読み書きを伴うため、初回同期の確認を待つ
+      // （確認前に切り替えると、空の同期データを正としてコピー・削除してしまう）
+      if (syncBlocked()) {
+        modeRadios.forEach((r) => {
+          r.checked = r.value === mode;
+        });
+        return;
+      }
+
       const label = newMode === "local" ? "この端末のみ（ローカル保存）" : "Google アカウントで同期";
-      if (!confirm(`保存先を「${label}」に切り替えます。\n現在のタスクは新しい保存先へコピーされます。よろしいですか？`)) {
+      if (!confirm(`保存先を「${label}」に切り替えます。\n現在のタスクは新しい保存先へコピーされ、新しい保存先に残っている古いタスクは現在の内容で置き換えられます。よろしいですか？`)) {
         modeRadios.forEach((r) => {
           r.checked = r.value === mode;
         });
@@ -193,32 +246,82 @@
       const source = currentArea();
       const target = newMode === "local" ? chrome.storage.local : chrome.storage.sync;
 
+      const revertRadios = () => {
+        modeRadios.forEach((r) => {
+          r.checked = r.value === mode;
+        });
+      };
+
       source.get(null, (items) => {
-        const data = Object.fromEntries(taskEntries(items));
-
-        const applyMode = () => {
-          mode = newMode;
-          chrome.storage.local.set({ [MODE_KEY]: newMode }, () => {
-            updateSyncGuide();
-            refreshUsage();
-            showStatus(`保存先を「${label}」に切り替えました`);
-          });
-        };
-
-        if (Object.keys(data).length === 0) {
-          applyMode();
+        if (chrome.runtime.lastError || !items) {
+          showStatus(`現在のデータの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+          revertRadios();
           return;
         }
 
-        target.set(data, () => {
-          if (chrome.runtime.lastError) {
-            showStatus(`コピーに失敗しました: ${chrome.runtime.lastError.message}`);
-            modeRadios.forEach((r) => {
-              r.checked = r.value === mode;
-            });
+        const data = Object.fromEntries(taskEntries(items));
+
+        target.get(null, (targetItems) => {
+          if (chrome.runtime.lastError || !targetItems) {
+            showStatus(`切り替え先のデータの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+            revertRadios();
             return;
           }
-          applyMode();
+
+          // コピー元に存在しない授業キーはコピー先の古い残骸なので削除する。
+          // 削除しないと、切り替えのたびに両方の保存先のデータが混ざって表示される
+          const staleKeys = taskEntries(targetItems)
+            .map(([key]) => key)
+            .filter((key) => !(key in data));
+
+          const applyMode = () => {
+            // モードの保存が成功してから内部状態を切り替える（先に切り替えると、
+            // 保存失敗時にその画面だけ切り替わったように見えて再起動後に元へ戻る）
+            chrome.storage.local.set({ [MODE_KEY]: newMode }, () => {
+              if (chrome.runtime.lastError) {
+                showStatus(`切り替えの保存に失敗しました: ${chrome.runtime.lastError.message}（タスクのコピーは完了していますが、保存先は元のままです）`);
+                revertRadios();
+                refreshUsage();
+                return;
+              }
+              mode = newMode;
+              updateSyncGuide();
+              refreshUsage();
+              showStatus(`保存先を「${label}」に切り替えました`);
+            });
+          };
+
+          const removeStale = () => {
+            if (staleKeys.length === 0) {
+              applyMode();
+              return;
+            }
+            target.remove(staleKeys, () => {
+              if (chrome.runtime.lastError) {
+                // コピーは済んでいるため「何も変わっていない」わけではない。状態を正確に伝える
+                showStatus(`古いデータの削除に失敗しました: ${chrome.runtime.lastError.message}（タスクのコピーは完了していますが、保存先は元のままです。もう一度お試しください）`);
+                revertRadios();
+                refreshUsage();
+                return;
+              }
+              applyMode();
+            });
+          };
+
+          if (Object.keys(data).length === 0) {
+            removeStale();
+            return;
+          }
+
+          // 先にコピーし、成功してから古いキーを削除する（失敗時にデータを失わない順序）
+          target.set(data, () => {
+            if (chrome.runtime.lastError) {
+              showStatus(`コピーに失敗しました: ${chrome.runtime.lastError.message}`);
+              revertRadios();
+              return;
+            }
+            removeStale();
+          });
         });
       });
     });
@@ -244,10 +347,13 @@
     });
   }
 
+  let statusTimer = null;
   function showStatus(message) {
     statusEl.textContent = message;
     statusEl.classList.add("show");
-    setTimeout(() => statusEl.classList.remove("show"), 2500);
+    // 前の通知のタイマーが残っていると新しい通知が早く消えるため、張り直す
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => statusEl.classList.remove("show"), 2500);
   }
 
   function normalizeEntry(value) {
@@ -273,7 +379,13 @@
   }
 
   document.getElementById("btn-export").addEventListener("click", () => {
+    // 初回同期の確認前にエクスポートすると、届いていないタスクが欠けた不完全なバックアップになる
+    if (mode === "sync" && syncBlocked()) return;
     currentArea().get(null, (items) => {
+      if (chrome.runtime.lastError || !items) {
+        showStatus(`エクスポートに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+        return;
+      }
       const data = Object.fromEntries(taskEntries(items));
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -295,6 +407,11 @@
     const file = importFileEl.files[0];
     if (!file) return;
 
+    if (mode === "sync" && syncBlocked()) {
+      importFileEl.value = "";
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       let data;
@@ -310,12 +427,36 @@
         return;
       }
 
-      if (!confirm("インポートすると同じ授業の既存タスクは上書きされます。よろしいですか？")) {
-        importFileEl.value = "";
+      // 授業ID（数字のキー）ごとに形式を検証し、タスクとして解釈できるものだけを取り込む。
+      // タスクは保存形式（id: 文字列, text: 文字列, done: 真偽値）へ正規化してから保存する
+      // （例: done が "false" のような文字列だと、画面で完了扱いになってしまう）
+      const clean = {};
+      const seenIds = new Set();
+      taskEntries(data).forEach(([classId, value]) => {
+        if (!/^\d+$/.test(classId)) return;
+        const entry = normalizeEntry(value);
+        const tasks = entry.tasks
+          .map((task) => {
+            let id = typeof task.id === "string" && task.id !== "" ? task.id : createTaskId();
+            // 同じ ID が重複していると、1件の削除操作で複数のタスクが消えるため振り直す
+            if (seenIds.has(id)) id = createTaskId();
+            seenIds.add(id);
+            return { id, text: task.text.trim(), done: task.done === true };
+          })
+          .filter((task) => task.text !== "");
+        if (tasks.length === 0) return;
+        clean[classId] = { subject: entry.subject, tasks };
+      });
+
+      if (Object.keys(clean).length === 0) {
+        showStatus("読み込みに失敗しました（タスクデータが見つかりません）");
         return;
       }
 
-      const clean = Object.fromEntries(taskEntries(data));
+      if (!confirm(`${Object.keys(clean).length} 授業分のタスクを読み込みます。同じ授業の既存タスクは上書きされます。よろしいですか？`)) {
+        return;
+      }
+
       currentArea().set(clean, () => {
         if (chrome.runtime.lastError) {
           showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
@@ -324,16 +465,24 @@
         refreshUsage();
         showStatus("インポートしました");
       });
-      importFileEl.value = "";
     };
     reader.readAsText(file);
+    // 読み込み結果に関わらず入力をリセットする（残っていると同じファイルを
+    // 選び直しても change イベントが発生しない）
+    importFileEl.value = "";
   });
 
   document.getElementById("btn-clear-done").addEventListener("click", () => {
+    // 初回同期の確認前だと、まだ届いていないタスクを見落としたまま書き換えてしまう
+    if (mode === "sync" && syncBlocked()) return;
     if (!confirm("すべての授業から完了済みタスクを削除します。よろしいですか？")) return;
 
     const area = currentArea();
     area.get(null, (items) => {
+      if (chrome.runtime.lastError || !items) {
+        showStatus(`データの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+        return;
+      }
       const updates = {};
       const removals = [];
 
@@ -355,16 +504,35 @@
         showStatus("完了済みタスクを削除しました");
       };
 
+      const fail = (action) => {
+        refreshUsage();
+        showStatus(`${action}に失敗しました: ${chrome.runtime.lastError.message}`);
+      };
+
+      const runRemovals = () => {
+        if (removals.length === 0) {
+          finish();
+          return;
+        }
+        area.remove(removals, () => {
+          if (chrome.runtime.lastError) {
+            fail("削除");
+            return;
+          }
+          finish();
+        });
+      };
+
       if (Object.keys(updates).length > 0) {
         area.set(updates, () => {
-          if (removals.length > 0) {
-            area.remove(removals, finish);
-          } else {
-            finish();
+          if (chrome.runtime.lastError) {
+            fail("保存");
+            return;
           }
+          runRemovals();
         });
       } else if (removals.length > 0) {
-        area.remove(removals, finish);
+        runRemovals();
       } else {
         showStatus("完了済みタスクはありませんでした");
       }
@@ -372,16 +540,26 @@
   });
 
   document.getElementById("btn-clear-all").addEventListener("click", () => {
+    if (mode === "sync" && syncBlocked()) return;
     if (!confirm("保存されているすべてのタスクを削除します。この操作は元に戻せません。よろしいですか？")) return;
 
     const area = currentArea();
     area.get(null, (items) => {
+      if (chrome.runtime.lastError || !items) {
+        showStatus(`データの読み込みに失敗しました: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : "不明なエラー"}`);
+        return;
+      }
       const keys = taskEntries(items).map(([key]) => key);
       if (keys.length === 0) {
         showStatus("削除するデータはありませんでした");
         return;
       }
       area.remove(keys, () => {
+        if (chrome.runtime.lastError) {
+          refreshUsage();
+          showStatus(`削除に失敗しました: ${chrome.runtime.lastError.message}`);
+          return;
+        }
         refreshUsage();
         showStatus("すべてのデータを削除しました");
       });
