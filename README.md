@@ -20,6 +20,7 @@
 - `manifest.json` に `key` を固定してあるため、どのパソコンで読み込んでも拡張機能 ID が同じになり、`chrome.storage.sync` の同期が機能します（`key` を消したり変えたりすると ID が変わり、同期されなくなるので注意）。
 - 設定ページの「保存先」で、Google アカウントで同期（`chrome.storage.sync`・他のパソコンと共有、上限約100KB）と、この端末のみ（`chrome.storage.local`・ローカル保存、上限約10MB）を切り替えられます。切り替え時には現在のタスクが新しい保存先へ自動的にコピーされます（元の保存先のデータはバックアップとして残ります）。この設定は端末ごとに保持されます。
 - 授業詳細ページ（`/lms/class/<ID>`）では、ポップアップではなくページ内に「マイタスク」パネルが埋め込まれ、その場でタスクの一覧・追加・編集・完了ができます。
+- Tree Ivy の右サイド表示で開いた授業ページにも「マイタスク」パネルを表示します。Tree Ivy は授業ページを iframe で開くため、タスク UI だけを全フレームへ読み込み、授業一覧の取得処理は親ページだけで実行します。
 - アイコンは Google Fonts の Material Symbols デザインを SVG として埋め込んでいます。
 - タスクは `chrome.storage.sync` に保存されるため、Chrome にログインして同期をオンにしている環境であれば他のパソコンでも同じタスクを閲覧・編集できます。
   - Chrome の同期が無効、またはログインしていない場合は、これまで通りその端末内だけに保存されます（`chrome.storage.local` 相当の動作）。
@@ -88,6 +89,7 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 - `tasks.html` / `tasks.js`: 年度・授業を選び、タスクの追加・編集・削除・完了切替を行う専用画面です。
 - `settings.html` / `settings.js`: 設定ページ（バックアップ・データ整理・使用量確認）です。
 - `tests/tasks-smoke.test.js`: 初回同期中の即時追加・保留キュー・同期後反映・終了警告を確認するランタイムスモークテストです（`node tests/tasks-smoke.test.js`）。
+- `tests/manifest-frames.test.js`: Tree Ivy の右サイド iframe にタスク UI が読み込まれ、授業一覧取得が重複しない manifest 設定を確認します（`node tests/manifest-frames.test.js`）。
 
 ## 対象サイト
 
