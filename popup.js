@@ -91,6 +91,36 @@
     return { subject: "", tasks: [] };
   }
 
+  function createTaskMain(task) {
+    const main = document.createElement("span");
+    main.className = "task-main";
+
+    const text = document.createElement("span");
+    text.className = "task-text";
+    text.textContent = task.text;
+    main.appendChild(text);
+
+    const createdAt = typeof task.createdAt === "number"
+      && Number.isFinite(task.createdAt)
+      && task.createdAt > 0
+      ? task.createdAt
+      : 0;
+    if (!createdAt) return main;
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return main;
+
+    const created = document.createElement("time");
+    created.className = "task-created";
+    created.dateTime = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-");
+    created.textContent = `追加 ${date.getMonth() + 1}月${date.getDate()}日`;
+    main.appendChild(created);
+    return main;
+  }
+
   function render(onDone) {
     storage.get(null, (items) => {
       if (chrome.runtime.lastError) {
@@ -234,10 +264,7 @@
             });
           });
 
-          const text = document.createElement("span");
-          text.textContent = task.text;
-
-          item.append(mark, text);
+          item.append(mark, createTaskMain(task));
           list.appendChild(item);
         });
 

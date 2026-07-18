@@ -55,9 +55,21 @@
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes[MODE_KEY]) return;
-    const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
-    if (nextMode !== storageMode) window.location.reload();
+    if (areaName === "local" && changes[MODE_KEY]) {
+      const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
+      if (nextMode !== storageMode) {
+        window.location.reload();
+        return;
+      }
+    }
+
+    // 同じ授業が複数の日・時限に表示されていても、タスクだけを全箇所へ即時反映する。
+    // 初回同期の確認前に届いた変更は、SyncGuard.when() 内の初期読み込みへ任せる。
+    if (!SyncGuard.isReady() || areaName !== storageMode) return;
+    Object.entries(changes).forEach(([classId, change]) => {
+      if (!/^\d+$/.test(classId)) return;
+      updateClassButtons(classId, change.newValue);
+    });
   });
 
   function createIcon(name, size = 16) {
@@ -171,10 +183,25 @@
       }
 
       .lms-task-text {
-        flex: 1;
         font-size: 13px;
         white-space: pre-wrap;
         word-break: break-word;
+      }
+
+      .lms-task-content {
+        display: flex;
+        min-width: 0;
+        flex: 1;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .lms-task-created,
+      .lms-preview-task-created {
+        color: #8a9499;
+        font-size: 10px;
+        line-height: 1.35;
+        text-decoration: none;
       }
 
       .lms-task-item.done .lms-task-text {
@@ -322,6 +349,11 @@
         white-space: pre-wrap;
         word-break: break-word;
       }
+
+      .lms-preview-task-created {
+        display: block;
+        margin-top: 1px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -356,6 +388,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = BUTTON_CLASS;
+      button.dataset.classId = classId;
       setButtonLabel(button, "task", "タスク");
 
       SyncGuard.when(() => {
@@ -449,32 +482,54 @@
     addLink("lms-task-settings-item", "settings.html", "タスク設定");
   }
 
-  // 保存形式: { subject: string, tasks: [{id, text, done}] }
+  function updateClassButtons(classId, rawValue) {
+    const normalizedId = String(classId);
+    document.querySelectorAll(`.${BUTTON_CLASS}`).forEach((button) => {
+      if (button.dataset.classId === normalizedId) {
+        updateButtonState(button, rawValue);
+      }
+    });
+  }
+
+  // 保存形式: { subject: string, tasks: [{id, text, done, createdAt?}] }
   // 旧形式（タスク配列のみ、またはメモ文字列）も読み込めるように変換する。
-  function normalizeEntry(value) {
+  function normalizeEntry(value, classId) {
     if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
       return {
         subject: typeof value.subject === "string" ? value.subject : "",
-        tasks: normalizeTasks(value.tasks)
+        tasks: normalizeTasks(value.tasks, classId)
       };
     }
 
-    return { subject: "", tasks: normalizeTasks(value) };
+    return { subject: "", tasks: normalizeTasks(value, classId) };
   }
 
-  function normalizeTasks(value) {
+  function normalizeTasks(value, classId) {
     if (Array.isArray(value)) {
+      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
+      const ids = new Set();
       return value
         .filter((task) => task && typeof task.text === "string")
-        .map((task) => ({
-          id: task.id || createTaskId(),
-          text: task.text,
-          done: !!task.done
-        }));
+        .map((task, index) => {
+          let id = typeof task.id === "string" && task.id !== ""
+            ? task.id
+            : `legacy-${stableClassId}-${index}`;
+          if (ids.has(id)) id = `${id}-${index}`;
+          ids.add(id);
+          const normalized = {
+            id,
+            text: task.text,
+            done: !!task.done
+          };
+          const createdAt = normalizeCreatedAt(task.createdAt);
+          if (createdAt) normalized.createdAt = createdAt;
+          return normalized;
+        });
     }
 
     if (typeof value === "string" && value.trim() !== "") {
-      return [{ id: createTaskId(), text: value, done: false }];
+      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
+      return [{ id: `legacy-${stableClassId}-0`, text: value, done: false }];
     }
 
     return [];
@@ -485,6 +540,28 @@
       return crypto.randomUUID();
     }
     return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function normalizeCreatedAt(value) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+    return Number.isNaN(new Date(value).getTime()) ? 0 : value;
+  }
+
+  function createCreatedDateElement(createdAt, className) {
+    const timestamp = normalizeCreatedAt(createdAt);
+    if (!timestamp) return null;
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const element = document.createElement("time");
+    element.className = className;
+    element.dateTime = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-");
+    element.textContent = `追加 ${date.getMonth() + 1}月${date.getDate()}日`;
+    return element;
   }
 
   // タスクの一覧・追加・編集 UI を作る共通部品。
@@ -557,7 +634,7 @@
           listEl.appendChild(failed);
           return;
         }
-        tasks = normalizeEntry(result[classId]).tasks;
+        tasks = normalizeEntry(result[classId], classId).tasks;
         renderList();
       });
     });
@@ -578,7 +655,7 @@
         refreshAfterSave = true;
         return;
       }
-      const next = normalizeEntry(changes[classId].newValue).tasks;
+      const next = normalizeEntry(changes[classId].newValue, classId).tasks;
       if (JSON.stringify(next) === JSON.stringify(tasks)) return;
       tasks = next;
       renderList();
@@ -619,6 +696,12 @@
         text.className = "lms-task-text";
         text.textContent = task.text;
 
+        const taskContent = document.createElement("div");
+        taskContent.className = "lms-task-content";
+        taskContent.appendChild(text);
+        const created = createCreatedDateElement(task.createdAt, "lms-task-created");
+        if (created) taskContent.appendChild(created);
+
         const actions = document.createElement("div");
         actions.className = "lms-task-actions";
 
@@ -639,7 +722,7 @@
         });
 
         actions.append(editBtn, deleteBtn);
-        item.append(checkbox, text, actions);
+        item.append(checkbox, taskContent, actions);
         listEl.appendChild(item);
       });
     }
@@ -695,7 +778,7 @@
           showToast(`タスクを読み込めませんでした${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`);
           return;
         }
-        tasks = normalizeEntry(result[classId]).tasks;
+        tasks = normalizeEntry(result[classId], classId).tasks;
         renderList();
         onTasksChanged(tasks);
       });
@@ -720,11 +803,19 @@
           return;
         }
 
-        const existing = normalizeEntry(result[classId]);
+        const existing = normalizeEntry(result[classId], classId);
         const subject = subjectName || existing.subject;
         const merged = ops.reduce(applyOp, existing.tasks);
 
-        storage.set({ [classId]: { subject, tasks: merged } }, () => {
+        const writeMerged = (callback) => {
+          if (merged.length === 0) {
+            storage.remove([classId], callback);
+          } else {
+            storage.set({ [classId]: { subject, tasks: merged } }, callback);
+          }
+        };
+
+        writeMerged(() => {
           saving = false;
           if (chrome.runtime.lastError) {
             saveQueue.length = 0;
@@ -772,7 +863,7 @@
           changedTask = target;
         }
       } else {
-        changedTask = { id: createTaskId(), text, done: false };
+        changedTask = { id: createTaskId(), text, done: false, createdAt: Date.now() };
         tasks.push(changedTask);
       }
 
@@ -820,7 +911,7 @@
         isFormOpen = open;
       },
       onTasksChanged: (tasks) => {
-        updateButtonState(buttonEl, { subject: subjectName, tasks });
+        updateClassButtons(classId, { subject: subjectName, tasks });
       }
     });
 
@@ -952,7 +1043,7 @@
   }
 
   function updateButtonState(button, rawValue) {
-    const tasks = normalizeEntry(rawValue).tasks;
+    const tasks = normalizeEntry(rawValue, button.dataset.classId).tasks;
     button.dataset.tasks = JSON.stringify(tasks);
 
     const incompleteCount = tasks.filter((task) => !task.done).length;
@@ -995,7 +1086,11 @@
 
     incompleteTasks.forEach((task) => {
       const item = document.createElement("li");
-      item.textContent = task.text;
+      const text = document.createElement("span");
+      text.textContent = task.text;
+      item.appendChild(text);
+      const created = createCreatedDateElement(task.createdAt, "lms-preview-task-created");
+      if (created) item.appendChild(created);
       list.appendChild(item);
     });
 

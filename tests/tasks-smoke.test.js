@@ -260,6 +260,16 @@ function settle(turns = 20) {
   return promise;
 }
 
+function findByClass(root, className) {
+  const matches = [];
+  const visit = (node) => {
+    if (String(node.className || "").split(/\s+/).includes(className)) matches.push(node);
+    node.children.forEach(visit);
+  };
+  visit(root);
+  return matches;
+}
+
 async function submitTask(text) {
   elements.get("new-task-text").value = text;
   const listener = elements.get("add-form").listeners.get("submit")[0];
@@ -280,10 +290,24 @@ async function main() {
   const pendingKeys = Object.keys(localArea._data).filter((key) => key.startsWith("__pending_task_add__:"));
   assert.equal(pendingKeys.length, 1, "pending task must be stored under an independent key");
   assert.equal(localArea._data[pendingKeys[0]].text, "同期前の追加");
+  const pendingCreatedAt = localArea._data[pendingKeys[0]].createdAt;
+  assert.ok(Number.isFinite(pendingCreatedAt) && pendingCreatedAt >= now, "pending task must record its creation time");
+  const pendingDates = findByClass(elements.get("task-groups"), "task-created");
+  assert.equal(pendingDates.length, 1, "pending task must show its creation date");
+  assert.match(pendingDates[0].textContent, /^追加 \d{1,2}月\d{1,2}日$/);
+  assert.doesNotMatch(pendingDates[0].textContent, /\d{4}年/, "visible date must omit the year");
 
   const waitingUnload = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined };
   windowListeners.get("beforeunload")[0](waitingUnload);
   assert.equal(waitingUnload.prevented, true, "closing during sync must request confirmation");
+
+  // 旧版で本体だけ保存され、保留キーの削除に失敗した状態を再現する。
+  // 保留側に残った正確な追加日時を、同じIDの保存済みタスクへ復旧できること。
+  const pendingId = localArea._data[pendingKeys[0]].id;
+  syncArea._data["100"] = {
+    subject: "テスト授業",
+    tasks: [{ id: pendingId, text: "同期前の追加", done: false }]
+  };
 
   assert.equal(guardTimers.size, 1, "sync guard timeout should be pending");
   [...guardTimers.values()][0]();
@@ -292,10 +316,28 @@ async function main() {
 
   assert.equal(syncArea._data["100"].tasks.length, 1, "pending task must flush after sync readiness");
   assert.equal(syncArea._data["100"].tasks[0].text, "同期前の追加");
+  assert.equal(syncArea._data["100"].tasks[0].createdAt, pendingCreatedAt, "flush must preserve or recover creation time");
   assert.equal(Object.keys(localArea._data).some((key) => key.startsWith("__pending_task_add__:")), false);
 
   await submitTask("同期後の追加");
   assert.equal(syncArea._data["100"].tasks.length, 2, "ready state must save directly");
+  assert.ok(Number.isFinite(syncArea._data["100"].tasks[1].createdAt), "ready task must record its creation time");
+  assert.equal(findByClass(elements.get("task-groups"), "task-created").length, 2, "stored tasks must show creation dates");
+
+  await new Promise((resolve) => {
+    syncArea.set({
+      "200": {
+        subject: "旧形式の授業",
+        tasks: [{ id: "legacy-without-date", text: "日付なしの旧タスク", done: false }]
+      }
+    }, resolve);
+  });
+  await settle();
+  assert.equal(
+    findByClass(elements.get("task-groups"), "task-created").length,
+    2,
+    "legacy tasks without createdAt must not receive a fabricated date"
+  );
 
   const readyUnload = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined };
   windowListeners.get("beforeunload")[0](readyUnload);

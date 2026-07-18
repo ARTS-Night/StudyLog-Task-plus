@@ -347,6 +347,20 @@
       overflow-wrap: anywhere;
     }
 
+    .task-main {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .task-created {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      text-decoration: none;
+    }
+
     .task-item.done .task-text {
       color: #929ba0;
       text-decoration: line-through;
@@ -471,6 +485,11 @@
       .task-actions {
         grid-column: 2;
         justify-content: flex-end;
+      }
+
+      .pending-note {
+        grid-column: 2;
+        justify-self: end;
       }
 
       .panel {

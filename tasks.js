@@ -109,6 +109,37 @@
     return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
+  function normalizeCreatedAt(value) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+    return Number.isNaN(new Date(value).getTime()) ? 0 : value;
+  }
+
+  function createTaskMain(task) {
+    const main = document.createElement("div");
+    main.className = "task-main";
+
+    const text = document.createElement("span");
+    text.className = "task-text";
+    text.textContent = task.text;
+    main.appendChild(text);
+
+    const createdAt = normalizeCreatedAt(task.createdAt);
+    if (!createdAt) return main;
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return main;
+
+    const created = document.createElement("time");
+    created.className = "task-created";
+    created.dateTime = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-");
+    created.textContent = `追加 ${date.getMonth() + 1}月${date.getDate()}日`;
+    main.appendChild(created);
+    return main;
+  }
+
   function normalizeTaskList(value, classId) {
     const source = Array.isArray(value) ? value : [];
     const ids = new Set();
@@ -121,7 +152,10 @@
           : `legacy-${classId}-${index}`;
         if (ids.has(id)) id = `${id}-${index}`;
         ids.add(id);
-        return { id, text: task.text, done: task.done === true };
+        const normalized = { id, text: task.text, done: task.done === true };
+        const createdAt = normalizeCreatedAt(task.createdAt);
+        if (createdAt) normalized.createdAt = createdAt;
+        return normalized;
       });
   }
 
@@ -218,9 +252,7 @@
       const year = typeof item.year === "string" && /^\d{4}$/.test(item.year)
         ? item.year
         : UNKNOWN_YEAR;
-      const createdAt = typeof item.createdAt === "number" && Number.isFinite(item.createdAt)
-        ? item.createdAt
-        : 0;
+      const createdAt = normalizeCreatedAt(item.createdAt);
       if (!id || ids.has(id) || !/^\d+$/.test(classId) || !text) return [];
       ids.add(id);
       return [{ id, classId, subject, text, year, createdAt }];
@@ -527,13 +559,11 @@
           marker.className = "pending-marker";
           marker.textContent = "…";
           marker.setAttribute("aria-hidden", "true");
-          const text = document.createElement("span");
-          text.className = "task-text";
-          text.textContent = task.text;
+          const taskMain = createTaskMain(task);
           const note = document.createElement("span");
           note.className = "pending-note";
           note.textContent = "端末に保留済み";
-          item.append(marker, text, note);
+          item.append(marker, taskMain, note);
           list.appendChild(item);
         });
         card.append(cardHeading, list);
@@ -630,16 +660,14 @@
       checkbox.setAttribute("aria-label", `${entry.subject}「${task.text}」を${task.done ? "未完了に戻す" : "完了にする"}`);
       checkbox.addEventListener("change", () => toggleTask(entry, task));
 
-      const text = document.createElement("span");
-      text.className = "task-text";
-      text.textContent = task.text;
+      const taskMain = createTaskMain(task);
 
       const actions = document.createElement("div");
       actions.className = "task-actions";
       const editButton = makeButton("編集", "button small", () => openEditDialog(entry, task, editButton));
       const deleteButton = makeButton("削除", "button small danger", () => deleteTask(entry, task));
       actions.append(editButton, deleteButton);
-      item.append(checkbox, text, actions);
+      item.append(checkbox, taskMain, actions);
       list.appendChild(item);
     });
 
@@ -705,7 +733,7 @@
     return saved;
   }
 
-  async function queuePendingTask(selected, text) {
+  async function queuePendingTask(selected, text, createdAt) {
     setBusy(true);
     let saved = false;
     try {
@@ -715,7 +743,7 @@
         subject: selected.subject,
         text,
         year: yearSelect.value,
-        createdAt: Date.now()
+        createdAt
       };
       await appendPendingAdd(item);
       saved = true;
@@ -766,11 +794,20 @@
             await withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
               const result = await storageGet(storage, [classId]);
               const latest = normalizeEntry(result[classId], classId);
-              const knownIds = new Set(latest.tasks.map((task) => task.id));
               additions.forEach((item) => {
-                if (knownIds.has(item.id)) return;
-                latest.tasks.push({ id: item.id, text: item.text, done: false });
-                knownIds.add(item.id);
+                const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
+                const createdAt = normalizeCreatedAt(item.createdAt);
+                if (existingIndex >= 0) {
+                  // 旧版で「本体保存成功・保留削除失敗」になった場合、保留側にだけ
+                  // 残っている正確な追加日時を復旧してから保留キーを削除する。
+                  if (!normalizeCreatedAt(latest.tasks[existingIndex].createdAt) && createdAt) {
+                    latest.tasks[existingIndex] = { ...latest.tasks[existingIndex], createdAt };
+                  }
+                  return;
+                }
+                const task = { id: item.id, text: item.text, done: false };
+                if (createdAt) task.createdAt = createdAt;
+                latest.tasks.push(task);
               });
               const subject = latest.subject || additions[0].subject || "";
               await storageSet(storage, { [classId]: { subject, tasks: latest.tasks } });
@@ -823,15 +860,16 @@
       return;
     }
 
+    const createdAt = Date.now();
     if (!ready) {
-      await queuePendingTask(selected, text);
+      await queuePendingTask(selected, text, createdAt);
       return;
     }
 
     const saved = await mutateClass(selected.classId, selected.subject, (tasks) => {
       let id = createTaskId();
       while (tasks.some((task) => task.id === id)) id = createTaskId();
-      tasks.push({ id, text, done: false });
+      tasks.push({ id, text, done: false, createdAt });
       return tasks;
     });
     if (saved) {
