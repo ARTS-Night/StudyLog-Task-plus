@@ -22,6 +22,10 @@
   const updateCatalogButton = document.getElementById("btn-update-catalog");
   const taskGroups = document.getElementById("task-groups");
   const taskSummary = document.getElementById("task-summary");
+  const taskSearch = document.getElementById("task-search");
+  const clearTaskSearchButton = document.getElementById("btn-clear-task-search");
+  const taskStatusFilter = document.getElementById("task-status-filter");
+  const retentionDaysSelect = document.getElementById("completed-retention-days");
   const refreshButton = document.getElementById("btn-refresh");
   const editDialog = document.getElementById("edit-dialog");
   const editForm = document.getElementById("edit-form");
@@ -53,6 +57,8 @@
   let catalogTabId = null;
   let catalogTabBaseline = 0;
   let catalogTabTimer = null;
+  let retentionDays = 0;
+  let retentionLoaded = false;
 
   function emptyCatalog() {
     return { updatedAt: 0, fullUpdatedAt: 0, years: {} };
@@ -109,9 +115,17 @@
     return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-  function normalizeCreatedAt(value) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
-    return Number.isNaN(new Date(value).getTime()) ? 0 : value;
+  function createTaskDate(timestamp, label, className) {
+    const normalized = TaskLifecycle.normalizeTimestamp(timestamp);
+    if (!normalized) return null;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const element = document.createElement("time");
+    element.className = className;
+    element.dateTime = date.toISOString();
+    element.textContent = `${label} ${date.getMonth() + 1}月${date.getDate()}日`;
+    return element;
   }
 
   function createTaskMain(task) {
@@ -123,20 +137,10 @@
     text.textContent = task.text;
     main.appendChild(text);
 
-    const createdAt = normalizeCreatedAt(task.createdAt);
-    if (!createdAt) return main;
-    const date = new Date(createdAt);
-    if (Number.isNaN(date.getTime())) return main;
-
-    const created = document.createElement("time");
-    created.className = "task-created";
-    created.dateTime = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0")
-    ].join("-");
-    created.textContent = `追加 ${date.getMonth() + 1}月${date.getDate()}日`;
-    main.appendChild(created);
+    const created = createTaskDate(task.createdAt, "追加", "task-created");
+    const completed = createTaskDate(task.completedAt, "完了", "task-completed");
+    if (created) main.appendChild(created);
+    if (completed) main.appendChild(completed);
     return main;
   }
 
@@ -152,10 +156,10 @@
           : `legacy-${classId}-${index}`;
         if (ids.has(id)) id = `${id}-${index}`;
         ids.add(id);
-        const normalized = { id, text: task.text, done: task.done === true };
-        const createdAt = normalizeCreatedAt(task.createdAt);
-        if (createdAt) normalized.createdAt = createdAt;
-        return normalized;
+        return TaskLifecycle.copyTimestamps(
+          task,
+          { id, text: task.text, done: task.done === true }
+        );
       });
   }
 
@@ -252,7 +256,7 @@
       const year = typeof item.year === "string" && /^\d{4}$/.test(item.year)
         ? item.year
         : UNKNOWN_YEAR;
-      const createdAt = normalizeCreatedAt(item.createdAt);
+      const createdAt = TaskLifecycle.normalizeTimestamp(item.createdAt);
       if (!id || ids.has(id) || !/^\d+$/.test(classId) || !text) return [];
       ids.add(id);
       return [{ id, classId, subject, text, year, createdAt }];
@@ -403,6 +407,10 @@
     });
     refreshButton.disabled = !ready || busy;
     updateCatalogButton.disabled = busy;
+    taskSearch.disabled = !ready;
+    taskStatusFilter.disabled = !ready;
+    clearTaskSearchButton.disabled = !ready || !hasActiveTaskFilter();
+    retentionDaysSelect.disabled = !retentionLoaded || busy;
   }
 
   function setBusy(value) {
@@ -511,6 +519,30 @@
     return button;
   }
 
+  function normalizeSearchText(value) {
+    return String(value || "")
+      .normalize("NFKC")
+      .toLocaleLowerCase("ja")
+      .trim();
+  }
+
+  function taskSearchTerms() {
+    const query = normalizeSearchText(taskSearch.value);
+    return query ? query.split(/\s+/) : [];
+  }
+
+  function hasActiveTaskFilter() {
+    return taskSearchTerms().length > 0 || taskStatusFilter.value !== "all";
+  }
+
+  function matchesTaskFilter(subject, task, terms) {
+    if (taskStatusFilter.value === "active" && task.done === true) return false;
+    if (taskStatusFilter.value === "done" && task.done !== true) return false;
+    if (terms.length === 0) return true;
+    const haystack = normalizeSearchText(`${subject || ""} ${task.text || ""}`);
+    return terms.every((term) => haystack.includes(term));
+  }
+
   function visiblePendingAdds() {
     const storedIds = new Set();
     entries.forEach((entry) => {
@@ -585,20 +617,46 @@
   }
 
   function renderTasks() {
-    const pending = visiblePendingAdds();
+    const allPending = visiblePendingAdds();
     const storedTotal = entries.reduce((sum, entry) => sum + entry.tasks.length, 0);
-    const total = storedTotal + pending.length;
-    const incomplete = pending.length + entries.reduce(
+    const total = storedTotal + allPending.length;
+    const incomplete = allPending.length + entries.reduce(
       (sum, entry) => sum + entry.tasks.filter((task) => !task.done).length,
       0
     );
-    taskSummary.textContent = total === 0 ? "" : `${total}件（未完了 ${incomplete}件）`;
+    const terms = taskSearchTerms();
+    const activeFilter = hasActiveTaskFilter();
+    const pending = allPending.filter((item) => {
+      const subject = item.subject || catalogByClassId.get(item.classId)?.subject || "";
+      return matchesTaskFilter(subject, item, terms);
+    });
+    const visibleEntries = entries
+      .map((entry) => ({
+        ...entry,
+        tasks: entry.tasks.filter((task) => matchesTaskFilter(entry.subject, task, terms))
+      }))
+      .filter((entry) => entry.tasks.length > 0);
+    const visibleStoredTotal = visibleEntries.reduce((sum, entry) => sum + entry.tasks.length, 0);
+    const visibleTotal = visibleStoredTotal + pending.length;
+    const visibleIncomplete = pending.length + visibleEntries.reduce(
+      (sum, entry) => sum + entry.tasks.filter((task) => !task.done).length,
+      0
+    );
+
+    if (total === 0) {
+      taskSummary.textContent = "";
+    } else if (activeFilter) {
+      taskSummary.textContent = `${visibleTotal}件表示 / 全${total}件（表示中の未完了 ${visibleIncomplete}件）`;
+    } else {
+      taskSummary.textContent = `${total}件（未完了 ${incomplete}件）`;
+    }
+    clearTaskSearchButton.disabled = !ready || !activeFilter;
     taskGroups.replaceChildren();
 
     if (pending.length > 0) renderPendingSection(pending);
 
-    if (storedTotal === 0) {
-      if (!ready || pending.length > 0) return;
+    if (total === 0) {
+      if (!ready) return;
       const empty = document.createElement("div");
       empty.className = "empty-state";
       empty.textContent = "タスクはまだありません。上のフォームから追加できます。";
@@ -606,8 +664,16 @@
       return;
     }
 
+    if (visibleTotal === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "検索・表示条件に一致するタスクはありません。条件を変えるか、クリアしてください。";
+      taskGroups.appendChild(empty);
+      return;
+    }
+
     const groups = new Map();
-    entries.forEach((entry) => {
+    visibleEntries.forEach((entry) => {
       if (!groups.has(entry.year)) groups.set(entry.year, []);
       groups.get(entry.year).push(entry);
     });
@@ -668,7 +734,7 @@
       checkbox.disabled = !ready || busy;
       checkbox.dataset.write = "";
       checkbox.setAttribute("aria-label", `${entry.subject}「${task.text}」を${task.done ? "未完了に戻す" : "完了にする"}`);
-      checkbox.addEventListener("change", () => toggleTask(entry, task));
+      checkbox.addEventListener("change", () => toggleTask(entry, task, checkbox.checked));
 
       const taskMain = createTaskMain(task);
 
@@ -818,11 +884,11 @@
               const latest = normalizeEntry(result[classId], classId);
               additions.forEach((item) => {
                 const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
-                const createdAt = normalizeCreatedAt(item.createdAt);
+                const createdAt = TaskLifecycle.normalizeTimestamp(item.createdAt);
                 if (existingIndex >= 0) {
                   // 旧版で「本体保存成功・保留削除失敗」になった場合、保留側にだけ
                   // 残っている正確な追加日時を復旧してから保留キーを削除する。
-                  if (!normalizeCreatedAt(latest.tasks[existingIndex].createdAt) && createdAt) {
+                  if (!TaskLifecycle.normalizeTimestamp(latest.tasks[existingIndex].createdAt) && createdAt) {
                     latest.tasks[existingIndex] = { ...latest.tasks[existingIndex], createdAt };
                   }
                   return;
@@ -900,13 +966,39 @@
     }
   }
 
-  function toggleTask(entry, task) {
+  function toggleTask(entry, task, desiredDone) {
+    const changedAt = Date.now();
     mutateClass(entry.classId, entry.subject, (tasks) => {
       const index = tasks.findIndex((item) => item.id === task.id);
       if (index < 0) throw new Error("このタスクは別の画面で削除されています");
-      tasks[index] = { ...tasks[index], done: !tasks[index].done };
+      tasks[index] = TaskLifecycle.setDone(tasks[index], desiredDone, changedAt);
       return tasks;
     });
+  }
+
+  async function saveRetentionSetting() {
+    if (!retentionLoaded || busy) return;
+    const previous = retentionDays;
+    const next = TaskLifecycle.normalizeRetentionDays(retentionDaysSelect.value);
+    retentionDays = next;
+    retentionDaysSelect.value = String(next);
+    setBusy(true);
+    try {
+      // 自動整理と同じ共通ロックへ入れ、OFF保存の完了後に古い設定の整理が走らないようにする。
+      await TaskMutationLock.request(() =>
+        storageSet(chrome.storage.local, { [TaskLifecycle.RETENTION_DAYS_KEY]: next })
+      );
+    } catch (error) {
+      retentionDays = previous;
+      retentionDaysSelect.value = String(previous);
+      showStatus(makeError("自動削除の設定を保存できませんでした", error).message, true);
+      finishBusy();
+      return;
+    }
+    showStatus(next > 0
+      ? `完了から${next}日後に自動削除します（次回利用時から適用）`
+      : "完了タスクの自動削除をオフにしました", false);
+    finishBusy();
   }
 
   function openEditDialog(entry, task, returnFocus) {
@@ -1061,6 +1153,17 @@
   }
 
   function onStorageChanged(changes, areaName) {
+    if (areaName === "local" && changes[TaskLifecycle.RETENTION_DAYS_KEY]) {
+      const nextRetentionDays = TaskLifecycle.normalizeRetentionDays(
+        changes[TaskLifecycle.RETENTION_DAYS_KEY].newValue
+      );
+      if (nextRetentionDays !== retentionDays) {
+        retentionDays = nextRetentionDays;
+        retentionDaysSelect.value = String(retentionDays);
+        updateControls();
+      }
+    }
+
     if (areaName === "local" && changes[MODE_KEY]) {
       const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
       if (nextMode !== mode) {
@@ -1118,6 +1221,15 @@
     renderClassOptions();
   });
   classSearch.addEventListener("input", renderClassOptions);
+  taskSearch.addEventListener("input", renderTasks);
+  taskStatusFilter.addEventListener("change", renderTasks);
+  clearTaskSearchButton.addEventListener("click", () => {
+    taskSearch.value = "";
+    taskStatusFilter.value = "all";
+    renderTasks();
+    taskSearch.focus();
+  });
+  retentionDaysSelect.addEventListener("change", () => void saveRetentionSetting());
   addForm.addEventListener("submit", addTask);
   refreshButton.addEventListener("click", () => {
     if (pendingAdds.length > 0) {
@@ -1157,6 +1269,9 @@
       catalog = combineCatalogs(fullCatalog, partialCatalog);
       pendingAdds = pendingAddsFromStorage(result);
       pendingStateUnknown = false;
+      retentionDays = TaskLifecycle.normalizeRetentionDays(result[TaskLifecycle.RETENTION_DAYS_KEY]);
+      retentionDaysSelect.value = String(retentionDays);
+      retentionLoaded = true;
       rebuildCatalogIndex();
       renderCatalogControls(false);
       renderTasks();
@@ -1164,20 +1279,42 @@
       SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
       if (!SyncGuard.isReady()) showSyncStatus();
       SyncGuard.when(() => {
-        ready = true;
-        updateControls();
-        renderTasks();
-        if (busy) {
-          flushAfterBusy = true;
-          return;
-        }
-        if (pendingAdds.length > 0) {
-          void flushPendingAdds();
-          return;
-        }
-        void loadAll({ silent: true, preserveYear: false }).then((loaded) => {
-          if (loaded) showStatus(mode === "sync" ? "同期の確認が完了しました" : "タスクを読み込みました", false);
-        });
+        void (async () => {
+          ready = true;
+          updateControls();
+          renderTasks();
+          if (busy) {
+            flushAfterBusy = true;
+            return;
+          }
+          let cleanupNotice = "";
+          let cleanupError = false;
+          try {
+            const cleanupResult = await TaskLifecycle.cleanup(mode);
+            if (cleanupResult.failed > 0) {
+              cleanupNotice = `${cleanupResult.deleted}件を削除しましたが、${cleanupResult.failed}授業の自動整理に失敗しました`;
+              cleanupError = true;
+            } else if (cleanupResult.deleted > 0) {
+              cleanupNotice = `期限を過ぎた完了タスクを${cleanupResult.deleted}件削除しました`;
+            }
+          } catch (error) {
+            cleanupNotice = makeError("完了タスクを自動整理できませんでした", error).message;
+            cleanupError = true;
+          }
+          if (pendingAdds.length > 0) {
+            if (cleanupNotice) showStatus(cleanupNotice, cleanupError, cleanupError);
+            void flushPendingAdds();
+            return;
+          }
+          void loadAll({ silent: true, preserveYear: false }).then((loaded) => {
+            if (!loaded) return;
+            if (cleanupNotice) {
+              showStatus(cleanupNotice, cleanupError, cleanupError);
+            } else {
+              showStatus(mode === "sync" ? "同期の確認が完了しました" : "タスクを読み込みました", false);
+            }
+          });
+        })();
       });
     })
     .catch((error) => {

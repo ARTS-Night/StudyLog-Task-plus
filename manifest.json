@@ -46,6 +46,7 @@
       "js": [
         "sync-guard.js",
         "mutation-lock.js",
+        "task-lifecycle.js",
         "content.js"
       ],
       "run_at": "document_idle",

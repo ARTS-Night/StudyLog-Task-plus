@@ -17,8 +17,8 @@ assert.ok(taskEntry.matches.includes(lmsMatch), "タスク UI は LMS 配下を�
 assert.equal(taskEntry.all_frames, true, "右サイド iframe にもタスク UI を読み込む");
 assert.deepEqual(
   taskEntry.js,
-  ["sync-guard.js", "mutation-lock.js", "content.js"],
-  "同期ガードと共通変更ロックを content.js より先に読み込む"
+  ["sync-guard.js", "mutation-lock.js", "task-lifecycle.js", "content.js"],
+  "同期ガード、共通変更ロック、タスク日時処理を content.js より先に読み込む"
 );
 
 assert.equal(
@@ -34,9 +34,31 @@ assert.equal(
 ].forEach(([htmlFile, mainScript]) => {
   const html = fs.readFileSync(path.join(__dirname, "..", htmlFile), "utf8");
   const lockIndex = html.indexOf('<script src="mutation-lock.js"></script>');
+  const lifecycleIndex = html.indexOf('<script src="task-lifecycle.js"></script>');
   const mainIndex = html.indexOf(`<script src="${mainScript}"></script>`);
   assert.ok(lockIndex >= 0 && lockIndex < mainIndex, `${htmlFile} は共通変更ロックを先に読み込む`);
+  assert.ok(
+    lifecycleIndex > lockIndex && lifecycleIndex < mainIndex,
+    `${htmlFile} はタスク日時処理を共通変更ロックの後、画面処理の前に読み込む`
+  );
 });
+
+const tasksHtml = fs.readFileSync(path.join(__dirname, "..", "tasks.html"), "utf8");
+assert.match(
+  tasksHtml,
+  /<label for="task-search">タスクを検索<\/label>[\s\S]*<input id="task-search" type="search"[^>]*aria-controls="task-groups"/,
+  "専用画面は保存済みタスク用のラベル付き検索欄を持つ"
+);
+assert.match(
+  tasksHtml,
+  /<select id="task-status-filter"[^>]*>[\s\S]*value="active">未完了[\s\S]*value="done">完了/,
+  "専用画面は完了状態の絞り込みを持つ"
+);
+assert.match(
+  tasksHtml,
+  /<select id="completed-retention-days"[^>]*>[\s\S]*value="0">自動削除しない[\s\S]*value="90">完了から90日後/,
+  "専用画面は既定OFFの完了後自動削除オプションを持つ"
+);
 
 const catalogEntries = scripts.filter((entry) =>
   entry.matches.includes(lmsMatch) && entry.js && entry.js.includes("class-catalog.js")

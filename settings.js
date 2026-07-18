@@ -80,11 +80,6 @@
     return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-  function normalizeCreatedAt(value) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
-    return Number.isNaN(new Date(value).getTime()) ? 0 : value;
-  }
-
   const syncGuideEl = document.getElementById("sync-guide");
 
   function updateSyncGuide() {
@@ -110,6 +105,18 @@
     // 設定ページは現在のモードに関わらず同期領域へ書き込む操作（保存先切替・印の書き込みなど）が
     // あるため、常に同期の初回ダウンロード完了を確認する（"local" を渡すと即座に許可されてしまう）
     SyncGuard.init("sync", result[SyncGuard.READY_KEY]);
+    SyncGuard.when(() => {
+      void TaskLifecycle.cleanup(mode)
+        .then((cleanupResult) => {
+          if (cleanupResult.deleted > 0 || cleanupResult.failed > 0) {
+            refreshUsage();
+            showStatus(cleanupResult.failed > 0
+              ? `${cleanupResult.deleted}件を削除しましたが、${cleanupResult.failed}授業の整理に失敗しました`
+              : `期限を過ぎた完了タスクを${cleanupResult.deleted}件削除しました`);
+          }
+        })
+        .catch((error) => showStatus(`完了タスクを自動整理できませんでした: ${error.message}`));
+    });
   });
 
   // 同期領域へ書き込む操作の前に呼ぶ。初回同期の確認が済んでいない間に書き込むと、
@@ -523,7 +530,7 @@
       }
 
       // 授業ID（数字のキー）ごとに形式を検証し、タスクとして解釈できるものだけを取り込む。
-      // タスクは保存形式（id: 文字列, text: 文字列, done: 真偽値, createdAt: 任意の数値）へ正規化してから保存する
+      // タスクは保存形式（id, text, done, createdAt?, completedAt?）へ正規化してから保存する
       // （例: done が "false" のような文字列だと、画面で完了扱いになってしまう）
       const clean = {};
       const seenIds = new Set();
@@ -535,10 +542,10 @@
             // 同じ ID が重複していると、1件の削除操作で複数のタスクが消えるため振り直す
             if (seenIds.has(id)) id = createTaskId();
             seenIds.add(id);
-            const normalized = { id, text: task.text.trim(), done: task.done === true };
-            const createdAt = normalizeCreatedAt(task.createdAt);
-            if (createdAt) normalized.createdAt = createdAt;
-            return normalized;
+            return TaskLifecycle.copyTimestamps(
+              task,
+              { id, text: task.text.trim(), done: task.done === true }
+            );
           })
           .filter((task) => task.text !== "");
         if (tasks.length === 0) return;

@@ -320,6 +320,7 @@ async function settle(turns = 12) {
 }
 
 async function main() {
+  vm.runInContext(fs.readFileSync("task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
   vm.runInContext(fs.readFileSync("content.js", "utf8"), context, { filename: "content.js" });
   await settle(2);
 
@@ -447,6 +448,48 @@ async function main() {
     assert.equal(button.textContent, "タスク (1)");
   });
 
+  let taskCheckbox = findElement(popup, (element) => element.tagName === "INPUT");
+  rejectNextMutation = true;
+  taskCheckbox.checked = true;
+  (taskCheckbox.listeners.get("change") || []).forEach((listener) => listener());
+  await settle();
+  assert.equal(syncSetCalls.length, 1, "rejected completion must not write task data");
+  assert.equal(initialTasks["100"].tasks[0].done, false);
+  assert.equal(Object.hasOwn(initialTasks["100"].tasks[0], "completedAt"), false);
+  sameClassButtons.forEach((button) => {
+    assert.equal(JSON.parse(button.dataset.tasks)[0].done, false, "rejected completion rolls every button back");
+    assert.equal(button.textContent, "タスク (1)");
+  });
+
+  // 完了操作の直前に別画面が本文を編集していても、古いtask全体をupsertせず
+  // 最新タスクへ完了状態だけを適用する。
+  initialTasks["100"].tasks[0].text = "他画面で編集済み";
+  taskCheckbox = findElement(popup, (element) => element.tagName === "INPUT");
+  const completionStartedAt = Date.now();
+  taskCheckbox.checked = true;
+  (taskCheckbox.listeners.get("change") || []).forEach((listener) => listener());
+  await settle();
+  assert.equal(syncSetCalls.length, 2, "completion must be saved once");
+  assert.equal(initialTasks["100"].tasks[0].done, true);
+  assert.equal(initialTasks["100"].tasks[0].text, "他画面で編集済み", "completion must preserve a concurrent text edit");
+  assert.ok(initialTasks["100"].tasks[0].completedAt >= completionStartedAt, "completion must record completedAt");
+  assert.equal(initialTasks["100"].tasks[0].createdAt, storedTask.createdAt, "completion must preserve createdAt");
+  const visibleCompletedDate = findElement(popup, (element) => hasClass(element, "lms-task-completed"));
+  assert.match(visibleCompletedDate.textContent, /^完了 \d{1,2}月\d{1,2}日$/);
+  sameClassButtons.forEach((button) => {
+    assert.ok(JSON.parse(button.dataset.tasks)[0].completedAt, "all same-class buttons must receive completedAt");
+    assert.equal(button.textContent, "完了 (1)");
+  });
+
+  taskCheckbox = findElement(popup, (element) => element.tagName === "INPUT");
+  taskCheckbox.checked = false;
+  (taskCheckbox.listeners.get("change") || []).forEach((listener) => listener());
+  await settle();
+  assert.equal(syncSetCalls.length, 3, "reopening must be saved once");
+  assert.equal(initialTasks["100"].tasks[0].done, false);
+  assert.equal(Object.hasOwn(initialTasks["100"].tasks[0], "completedAt"), false);
+  assert.equal(initialTasks["100"].tasks[0].createdAt, storedTask.createdAt);
+
   const deleteButton = findElement(popup, (element) => element.title === "削除");
   click(deleteButton);
   await settle();
@@ -463,7 +506,7 @@ async function main() {
   rejectNextMutation = true;
   click(saveButton);
   await settle();
-  assert.equal(syncSetCalls.length, 1, "a rejected common lock must not write optimistic task data");
+  assert.equal(syncSetCalls.length, 3, "a rejected common lock must not write optimistic task data");
   sameClassButtons.forEach((button) => {
     assert.equal(button.dataset.tasks, "[]", "a rejected save must roll every occurrence back to storage");
   });

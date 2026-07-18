@@ -244,6 +244,46 @@
       font-size: 12px;
     }
 
+    .task-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(230px, 0.75fr);
+      gap: 14px;
+      margin-bottom: 18px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #f8fafb;
+    }
+
+    .task-filter-controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(130px, 0.35fr);
+      gap: 12px;
+    }
+
+    .search-input-row {
+      display: flex;
+      min-width: 0;
+      gap: 7px;
+    }
+
+    .search-input-row input {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .task-retention {
+      padding-left: 14px;
+      border-left: 1px solid var(--line);
+    }
+
+    .retention-help {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
     .task-groups {
       display: grid;
       gap: 18px;
@@ -356,6 +396,13 @@
 
     .task-created {
       color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      text-decoration: none;
+    }
+
+    .task-completed {
+      color: var(--accent-dark);
       font-size: 11px;
       line-height: 1.35;
       text-decoration: none;
@@ -478,6 +525,17 @@
         grid-column: auto;
       }
 
+      .task-toolbar,
+      .task-filter-controls {
+        grid-template-columns: 1fr;
+      }
+
+      .task-retention {
+        padding: 12px 0 0;
+        border-top: 1px solid var(--line);
+        border-left: 0;
+      }
+
       .task-item {
         grid-template-columns: auto minmax(0, 1fr);
       }
@@ -540,7 +598,7 @@
         </div>
 
         <div class="field">
-          <label for="class-search">授業名で絞り込み（任意）</label>
+          <label for="class-search">追加先の授業を絞り込む（任意）</label>
           <input id="class-search" type="search" placeholder="例：プログラミング" autocomplete="off" data-write disabled>
         </div>
 
@@ -564,11 +622,46 @@
       <div class="panel-heading">
         <div>
           <h2 id="tasks-heading">すべてのタスク</h2>
-          <p id="task-summary" class="summary"></p>
+          <p id="task-summary" class="summary" role="status" aria-live="polite" aria-atomic="true"></p>
         </div>
         <button id="btn-refresh" class="button small" type="button" disabled>最新の状態に更新</button>
       </div>
-      <div id="task-groups" class="task-groups" aria-live="polite"></div>
+
+      <div class="task-toolbar">
+        <div class="task-filter-controls" role="search" aria-label="保存済みタスクの検索と絞り込み">
+          <div class="field">
+            <label for="task-search">タスクを検索</label>
+            <div class="search-input-row">
+              <input id="task-search" type="search" placeholder="タスク内容・授業名で検索" autocomplete="off" aria-controls="task-groups" disabled>
+              <button id="btn-clear-task-search" class="button small" type="button" disabled>クリア</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="task-status-filter">状態</label>
+            <select id="task-status-filter" aria-controls="task-groups" disabled>
+              <option value="all">すべて</option>
+              <option value="active">未完了</option>
+              <option value="done">完了</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field task-retention">
+          <label for="completed-retention-days">完了タスクの自動削除（この端末）</label>
+          <select id="completed-retention-days" aria-describedby="retention-help" disabled>
+            <option value="0">自動削除しない</option>
+            <option value="1">完了から1日後</option>
+            <option value="3">完了から3日後</option>
+            <option value="7">完了から7日後</option>
+            <option value="14">完了から14日後</option>
+            <option value="30">完了から30日後</option>
+            <option value="90">完了から90日後</option>
+          </select>
+          <p id="retention-help" class="retention-help">この端末で期限経過後、次にスタログか拡張画面を開いたときに削除します。完了日のない旧タスクは、一度未完了へ戻して再完了すると対象になります。同期保存のタスク自体は他の端末からも削除されます。</p>
+        </div>
+      </div>
+
+      <div id="task-groups" class="task-groups"></div>
     </section>
   </main>
 
@@ -589,6 +682,7 @@
   <div id="status" role="status" aria-live="polite"></div>
   <script src="sync-guard.js"></script>
   <script src="mutation-lock.js"></script>
+  <script src="task-lifecycle.js"></script>
   <script src="tasks.js"></script>
 </body>
 </html>

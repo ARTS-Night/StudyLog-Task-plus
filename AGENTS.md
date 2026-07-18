@@ -27,6 +27,7 @@
 | `sync-guard.js` | Chrome Sync の初回ダウンロード待ちを扱う共通ガード |
 | `mutation-lock.js` | Service Worker の共通変更キューを利用するクライアント |
 | `mutation-lock-background.js` | 全画面・content script の変更を FIFO で直列化する Service Worker |
+| `task-lifecycle.js` | 追加・完了日時の正規化、完了状態変更、期限切れタスクの自動整理 |
 | `class-catalog.js` | ホームとマイページから年度・授業ID・科目名を抽出して保存 |
 | `popup.html` / `popup.js` | Chrome ツールバーの全タスク一覧 |
 | `tasks.html` / `tasks.js` | 年度別の専用管理画面、授業一覧の背景取得、保留タスクの反映 |
@@ -37,6 +38,7 @@
 | `tests/popup-smoke.test.js` | 同期ガード、外部変更反映、旧形式の完了切替を確認するテスト |
 | `tests/mutation-lock.test.js` | 実行コンテキスト横断の変更キューと異常切断を確認するテスト |
 | `tests/sync-guard.test.js` | 初回同期通知・空データtimeout・localモードを確認するテスト |
+| `tests/task-lifecycle.test.js` | 完了日時と完了後自動削除の境界・安全性を確認するテスト |
 | `344赤池璃月＿企画書.md` / `344赤池璃月_研究資料.md` | ユーザーの研究文書。明示依頼なしに改稿しない |
 | `StudyLog-Task-plus.zip` | 追跡済みの配布物。リリース依頼なしに再生成・ステージしない |
 
@@ -45,10 +47,10 @@
 `manifest.json` の content script は意図的に分離されています。
 
 1. `class-catalog.js` は `https://portal.iwasaki.ac.jp/lms/*` の最上位文書と、マイページ `sMyPage.php` で実行します。
-2. `sync-guard.js`、`mutation-lock.js`、続いて `content.js` は LMS の全フレームで実行します。
+2. `sync-guard.js`、`mutation-lock.js`、`task-lifecycle.js`、続いて `content.js` は LMS の全フレームで実行します。
 3. Tree Ivy Replanted は授業詳細を同一オリジンの iframe で右側へ開くため、タスクUI側には `all_frames: true` が必要です。
 4. 授業カタログ処理を全フレームへ入れると、iframeごとに抽出・取得・メッセージリスナーが重複します。2つの manifest エントリを統合しないでください。
-5. `sync-guard.js` と `mutation-lock.js` は、それらを利用する `content.js`、`popup.js`、`tasks.js`、`settings.js` より必ず先に読み込んでください。
+5. `sync-guard.js`、`mutation-lock.js`、`task-lifecycle.js` は、それらを利用する `content.js`、`popup.js`、`tasks.js`、`settings.js` より必ず先に読み込んでください。
 
 `mutation-lock-background.js` は DOM やタスク本体へ触れず、`runtime.connect()` の Port を要求順に1件ずつ許可します。content script の Web Locks はホスト側、拡張画面の Web Locks は拡張機能側に分かれるため、この Service Worker のキューを全体変更ロックとして使用します。専用画面によるマイページ取得は `chrome.tabs.create({ active: false })` と content script のメッセージで完結します。取得成功時だけ送信元タブと更新日時を検証して背景タブを閉じ、失敗時はログイン状態を確認できるよう残します。
 
@@ -66,8 +68,9 @@
       {
         id: "UUIDまたは一意な文字列",
         text: "提出物",
-        done: false,
-        createdAt: 1784300400000
+        done: true,
+        createdAt: 1784300400000,
+        completedAt: 1784386800000
       }
     ]
   }
@@ -77,6 +80,7 @@
 - 新しいタスクIDは `crypto.randomUUID()` を優先します。
 - `createdAt` は新規追加時に一度だけ設定する Unix epoch milliseconds です。画面ではローカル時間の月日だけを表示します。
 - 編集・完了切替・保留反映・保存先切替・JSON入出力では同じ `createdAt` を維持してください。既存タスクで欠落している場合や、0・負数・非有限値・無効な日時の場合は日付を表示せず、現在日時を捏造しないでください。
+- `completedAt` は未完了から完了へ切り替えた操作時刻です。未完了へ戻すと削除し、再完了時は新しい時刻を設定します。完了済み旧タスクで欠落・無効な場合は日時を捏造せず、自動削除の対象にしません。
 - `__` で始まるキーは内部データであり、タスク一覧・エクスポート・一括処理では除外します。
 - タスクが0件になった授業キーは、空配列を書き戻さず `remove` します。
 - 旧形式の文字列メモ、タスク配列、IDなしタスクを読み込む互換処理を維持してください。
@@ -93,6 +97,7 @@
 | `__class_catalog_attempt__` | マイページ取得を最後に試みた時刻 |
 | `__pending_task_add__:<taskId>` | 同期確認中に追加したタスク1件 |
 | `__pending_task_adds__` | 旧バージョンの保留タスク配列。読み込み互換のみ |
+| `__completed_task_retention_days__` | 完了後の自動削除日数。未設定・`0` は無効、選択肢は1/3/7/14/30/90日 |
 
 `chrome.storage.sync` の内部キー `__sync_check__` は端末ごとの同期確認印です。保存先を local にしていても、設定画面の同期チェックは sync 領域を使用します。
 
@@ -158,6 +163,15 @@
 - `set`、`get`、`remove` の callback 後は `chrome.runtime.lastError` を確認します。
 - タスクIDは更新競合と保留キューの重複排除に使うため、編集や完了切替で変更しないでください。
 
+### 完了日時と自動削除
+
+- 完了操作の時刻はロック待ち時間を含めないよう、クリック直後に取得し、最新タスクへID単位で反映します。
+- 自動削除は `done === true` かつ有効な `completedAt` があり、設定日数×24時間以上経過したタスクだけを対象にします。未来日時、日時なし旧データ、未完了タスクは削除しません。
+- 保持日数の変更も `TaskMutationLock` 内で保存し、進行中の自動整理と順序を確定させます。設定変更直後には削除せず、次回利用時から適用します。
+- `TaskLifecycle.cleanup()` は `SyncGuard` 準備完了後だけ呼び、`TaskMutationLock` のgrant後に保存先と設定を再確認します。最初の全件読込は候補ID・完了日時の抽出だけに使い、各授業を保存直前に再読込して一致する候補だけを除いてください。反対側保存先のバックアップと保留キューは触りません。
+- 自動整理は授業ごとに成功・失敗を集計します。一部失敗時も成功件数と失敗授業数を区別して表示し、失敗した授業は次回利用時に再試行できる状態を維持してください。
+- 正確な期限時刻に常駐実行する機能ではありません。期限経過後、スタログ最上位画面・専用画面・ポップアップのいずれかを次に開いた時に整理します。
+
 ### 保存先変更と破壊的操作
 
 - 保存先切替は、保留タスクがないことを確認し、コピー成功後に古い残骸を削除し、最後に `__storage_mode__` を変更します。
@@ -185,24 +199,27 @@ node tests/content-buttons-smoke.test.js
 node tests/popup-smoke.test.js
 node tests/mutation-lock.test.js
 node tests/sync-guard.test.js
+node tests/task-lifecycle.test.js
 Get-ChildItem -File -Filter *.js | ForEach-Object { node --check $_.FullName }
 ```
 
-- `tasks-smoke.test.js` は偽DOM・偽Chrome API上で、初回同期待ち、保留追加、追加日時の保持、旧形式、終了警告を確認します。
+- `tasks-smoke.test.js` は偽DOM・偽Chrome API上で、初回同期待ち、保留追加、タスク検索、追加・完了日時、旧形式、終了警告を確認します。
 - `manifest-frames.test.js` は content script の分離と `all_frames` を静的検査します。
 - `content-buttons-smoke.test.js` は同じ授業IDの複数ボタンと追加日時の保持を偽DOM上で確認します。
 - `popup-smoke.test.js` は同期待ち中の書込み禁止、変更通知の再描画、IDなし旧タスクの識別を確認します。
 - `mutation-lock.test.js` はService WorkerのFIFO変更キュー、heartbeat、例外・切断後の解放を確認します。
 - `sync-guard.test.js` は同期通知と初回getの競合、空アカウントtimeout、localモードを確認します。
+- `task-lifecycle.test.js` は完了日時、未完了化、再完了、自動削除の境界、保存先競合、旧形式を確認します。
 - いずれも実スタログや実Chrome Syncを使う E2E テストではありません。
 
 実機確認では、拡張機能を再読み込みした後にスタログのタブも再読み込みし、次を確認します。
 
 1. ホームの各授業枠にタスクボタンが1個だけ表示され、同じ授業の全枠が保存直後に更新される。
 2. 通常の授業詳細と Tree Ivy の右サイド iframe に「マイタスク」が1個だけ表示される。
-3. 追加・編集・完了・削除がポップアップ、専用画面、別タブへ反映される。
-4. sync/local の両モードと保存先切替が動作する。
-5. 授業カタログの背景更新が成功時だけタブを閉じ、失敗時は確認用タブを残す。
+3. 追加・編集・完了・削除がポップアップ、専用画面、別タブへ反映され、追加日・完了日が正しく表示される。
+4. 専用画面の本文・授業名・状態検索、検索クリア、完了後自動削除の各選択肢が動作する。
+5. sync/local の両モードと保存先切替が動作する。
+6. 授業カタログの背景更新が成功時だけタブを閉じ、失敗時は確認用タブを残す。
 
 ## Git・解析用ファイル・配布物
 
@@ -217,4 +234,4 @@ Get-ChildItem -File -Filter *.js | ForEach-Object { node --check $_.FullName }
 - Chrome デスクトップ専用で、スタログのDOM変更に影響を受けます。
 - Chrome Sync の完了を直接検知する API がないため、同期ガードはデータ到着、変更通知、20秒タイムアウトを使うヒューリスティックです。
 - `beforeunload` の確認は Chrome 全体の終了時などに表示されない場合があります。保留タスクは local に残してデータを守ります。
-- 追加日時は記録しますが、提出期限、タグ、並び替え、高度な絞り込み、独自バックエンドは未実装です。追加する場合は既存データの後方互換とUIの簡潔さを維持してください。
+- 追加・完了日時と本文・授業名・状態の絞り込みは実装済みですが、提出期限、タグ、並び替え、独自バックエンドは未実装です。追加する場合は既存データの後方互換とUIの簡潔さを維持してください。

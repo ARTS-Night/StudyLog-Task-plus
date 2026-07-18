@@ -60,6 +60,21 @@
     initClassPagePanel();
     insertNavSettingsLink();
     observeDynamicSections();
+
+    // all_framesで同じページ内のiframeにも入るため、自動整理は最上位文書だけで行う。
+    if (!window.top || window.top === window) {
+      SyncGuard.when(() => {
+        void TaskLifecycle.cleanup(storageMode)
+          .then((result) => {
+            if (result.failed > 0) {
+              console.warn(`${result.failed}授業の完了タスクを自動整理できませんでした`, result.errors);
+            }
+          })
+          .catch((error) => {
+            console.warn("完了タスクを自動整理できませんでした", error);
+          });
+      });
+    }
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -205,11 +220,20 @@
       }
 
       .lms-task-created,
+      .lms-task-completed,
       .lms-preview-task-created {
-        color: #66727a;
         font-size: 11px;
         line-height: 1.35;
         text-decoration: none;
+      }
+
+      .lms-task-created,
+      .lms-preview-task-created {
+        color: #66727a;
+      }
+
+      .lms-task-completed {
+        color: #24743e;
       }
 
       .lms-task-item.done .lms-task-text {
@@ -514,7 +538,7 @@
     }
   }
 
-  // 保存形式: { subject: string, tasks: [{id, text, done, createdAt?}] }
+  // 保存形式: { subject: string, tasks: [{id, text, done, createdAt?, completedAt?}] }
   // 旧形式（タスク配列のみ、またはメモ文字列）も読み込めるように変換する。
   function normalizeEntry(value, classId) {
     if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
@@ -539,14 +563,11 @@
             : `legacy-${stableClassId}-${index}`;
           if (ids.has(id)) id = `${id}-${index}`;
           ids.add(id);
-          const normalized = {
+          return TaskLifecycle.copyTimestamps(task, {
             id,
             text: task.text,
-            done: !!task.done
-          };
-          const createdAt = normalizeCreatedAt(task.createdAt);
-          if (createdAt) normalized.createdAt = createdAt;
-          return normalized;
+            done: task.done === true
+          });
         });
     }
 
@@ -565,25 +586,16 @@
     return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-  function normalizeCreatedAt(value) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
-    return Number.isNaN(new Date(value).getTime()) ? 0 : value;
-  }
-
-  function createCreatedDateElement(createdAt, className) {
-    const timestamp = normalizeCreatedAt(createdAt);
+  function createTaskDateElement(timestampValue, label, className) {
+    const timestamp = TaskLifecycle.normalizeTimestamp(timestampValue);
     if (!timestamp) return null;
     const date = new Date(timestamp);
     if (Number.isNaN(date.getTime())) return null;
 
     const element = document.createElement("time");
     element.className = className;
-    element.dateTime = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0")
-    ].join("-");
-    element.textContent = `追加 ${date.getMonth() + 1}月${date.getDate()}日`;
+    element.dateTime = date.toISOString();
+    element.textContent = `${label} ${date.getMonth() + 1}月${date.getDate()}日`;
     return element;
   }
 
@@ -708,10 +720,14 @@
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = task.done;
-        checkbox.setAttribute("aria-label", `完了: ${task.text}`);
+        checkbox.setAttribute("aria-label", `${task.text}を${task.done ? "未完了に戻す" : "完了にする"}`);
         checkbox.addEventListener("change", () => {
-          task.done = checkbox.checked;
-          persist({ type: "upsert", task: { ...task } });
+          const desiredDone = checkbox.checked;
+          const changedAt = Date.now();
+          const updated = TaskLifecycle.setDone(task, desiredDone, changedAt);
+          const index = tasks.findIndex((item) => item.id === task.id);
+          if (index >= 0) tasks[index] = updated;
+          persist({ type: "set-done", id: task.id, done: desiredDone, changedAt });
           renderList();
         });
 
@@ -722,8 +738,10 @@
         const taskContent = document.createElement("div");
         taskContent.className = "lms-task-content";
         taskContent.appendChild(text);
-        const created = createCreatedDateElement(task.createdAt, "lms-task-created");
+        const created = createTaskDateElement(task.createdAt, "追加", "lms-task-created");
+        const completed = createTaskDateElement(task.completedAt, "完了", "lms-task-completed");
         if (created) taskContent.appendChild(created);
+        if (completed) taskContent.appendChild(completed);
 
         const actions = document.createElement("div");
         actions.className = "lms-task-actions";
@@ -777,6 +795,13 @@
     function applyOp(list, op) {
       if (op.type === "remove") {
         return list.filter((t) => t.id !== op.id);
+      }
+      if (op.type === "set-done") {
+        const index = list.findIndex((task) => task.id === op.id);
+        if (index < 0) return list;
+        const next = list.slice();
+        next[index] = TaskLifecycle.setDone(next[index], op.done, op.changedAt);
+        return next;
       }
       const index = list.findIndex((t) => t.id === op.task.id);
       if (index >= 0) {
@@ -1126,7 +1151,7 @@
       const text = document.createElement("span");
       text.textContent = task.text;
       item.appendChild(text);
-      const created = createCreatedDateElement(task.createdAt, "lms-preview-task-created");
+      const created = createTaskDateElement(task.createdAt, "追加", "lms-preview-task-created");
       if (created) item.appendChild(created);
       list.appendChild(item);
     });

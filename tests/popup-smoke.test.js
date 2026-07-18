@@ -338,6 +338,7 @@ async function main() {
     TaskMutationLock: immediateMutationLock
   });
 
+  vm.runInContext(fs.readFileSync("task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
   vm.runInContext(fs.readFileSync("popup.js", "utf8"), context, { filename: "popup.js" });
   await settle();
 
@@ -395,10 +396,16 @@ async function main() {
     [false, false],
     "a rejected common lock must roll back the optimistic completion state"
   );
+  assert.equal(
+    syncArea._data["100"].tasks.some((task) => Object.hasOwn(task, "completedAt")),
+    false,
+    "rejected completion must not leak completedAt into storage"
+  );
 
   await delay(90);
   await settle();
   marks = content.querySelectorAll(".mark");
+  const completionStartedAt = Date.now();
   marks[1].click();
   await settle(16);
 
@@ -419,6 +426,29 @@ async function main() {
     [firstCreatedAt, secondCreatedAt],
     "完了切替でcreatedAtを維持する"
   );
+  assert.ok(storedTasks[1].completedAt >= completionStartedAt, "完了操作でcompletedAtを記録する");
+
+  await delay(90);
+  await settle();
+  assert.equal(content.querySelectorAll(".task-completed").length, 1, "完了日をポップアップへ表示する");
+  marks = content.querySelectorAll(".mark");
+  marks[1].click();
+  await settle(16);
+  assert.equal(syncArea._data["100"].tasks[1].done, false);
+  assert.equal(
+    Object.hasOwn(syncArea._data["100"].tasks[1], "completedAt"),
+    false,
+    "未完了へ戻したときcompletedAtを削除する"
+  );
+  assert.equal(syncArea._data["100"].tasks[1].createdAt, secondCreatedAt);
+
+  await delay(90);
+  await settle();
+  marks = content.querySelectorAll(".mark");
+  const recompletionStartedAt = Date.now();
+  marks[1].click();
+  await settle(16);
+  assert.ok(syncArea._data["100"].tasks[1].completedAt >= recompletionStartedAt, "再完了時は新しい日時を記録する");
 
   // MODE_KEYの通知がまだポップアップへ届いていなくても、grant後に保存先を
   // 読み直し、切替後のlocal領域へ変更する。

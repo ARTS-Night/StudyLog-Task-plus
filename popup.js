@@ -97,11 +97,6 @@
     return svg;
   }
 
-  function normalizeCreatedAt(value) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
-    return Number.isNaN(new Date(value).getTime()) ? 0 : value;
-  }
-
   function normalizeTasks(value, classId) {
     if (Array.isArray(value)) {
       const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
@@ -119,10 +114,10 @@
             suffix += 1;
           }
           ids.add(id);
-          const normalized = { id, text: task.text, done: task.done === true };
-          const createdAt = normalizeCreatedAt(task.createdAt);
-          if (createdAt) normalized.createdAt = createdAt;
-          return normalized;
+          return TaskLifecycle.copyTimestamps(
+            task,
+            { id, text: task.text, done: task.done === true }
+          );
         });
     }
 
@@ -154,21 +149,29 @@
     text.textContent = task.text;
     main.appendChild(text);
 
-    const createdAt = normalizeCreatedAt(task.createdAt);
-    if (!createdAt) return main;
-    const date = new Date(createdAt);
-    if (Number.isNaN(date.getTime())) return main;
-
-    const created = document.createElement("time");
-    created.className = "task-created";
-    created.dateTime = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0")
-    ].join("-");
-    created.textContent = `追加 ${date.getMonth() + 1}月${date.getDate()}日`;
-    main.appendChild(created);
+    const appendDate = (timestamp, label, className) => {
+      const normalized = TaskLifecycle.normalizeTimestamp(timestamp);
+      if (!normalized) return;
+      const date = new Date(normalized);
+      if (Number.isNaN(date.getTime())) return;
+      const element = document.createElement("time");
+      element.className = className;
+      element.dateTime = date.toISOString();
+      element.textContent = `${label} ${date.getMonth() + 1}月${date.getDate()}日`;
+      main.appendChild(element);
+    };
+    appendDate(task.createdAt, "追加", "task-created");
+    appendDate(task.completedAt, "完了", "task-completed");
     return main;
+  }
+
+  function applyCompletionMetadata(target, source) {
+    target.done = source.done === true;
+    if (Object.prototype.hasOwnProperty.call(source, "completedAt")) {
+      target.completedAt = source.completedAt;
+    } else {
+      delete target.completedAt;
+    }
   }
 
   function render(onDone) {
@@ -267,7 +270,10 @@
             mark.disabled = true;
 
             const wasDone = !!task.done;
-            task.done = !wasDone;
+            const hadCompletedAt = Object.prototype.hasOwnProperty.call(task, "completedAt");
+            const previousCompletedAt = task.completedAt;
+            const changedAt = Date.now();
+            applyCompletionMetadata(task, TaskLifecycle.setDone(task, !wasDone, changedAt));
 
             // 保存直前に読み直した最新データへ、このタスクの完了状態だけを反映する。
             // ポップアップを開いたときの配列を丸ごと保存すると、その後に他の端末で
@@ -280,6 +286,8 @@
 
               const revert = (message) => {
                 task.done = wasDone;
+                if (hadCompletedAt) task.completedAt = previousCompletedAt;
+                else delete task.completedAt;
                 renderMark();
                 showStatus(message);
                 finish();
@@ -296,13 +304,15 @@
               const index = list.findIndex((t) => t.id === task.id);
               if (index < 0) {
                 task.done = wasDone;
+                if (hadCompletedAt) task.completedAt = previousCompletedAt;
+                else delete task.completedAt;
                 showStatus("このタスクは他の端末で変更されたため、一覧を読み直しました");
                 releaseMutation();
                 render();
                 return;
               }
 
-              list[index] = { ...list[index], done: task.done };
+              list[index] = TaskLifecycle.setDone(list[index], task.done, changedAt);
 
               mutationStorage.set({ [entry.classId]: { subject: latest.subject || entry.subject, tasks: list } }, () => {
                 if (chrome.runtime.lastError) {
@@ -310,6 +320,7 @@
                   return;
                 }
                 item.classList.toggle("done", task.done);
+                applyCompletionMetadata(task, list[index]);
                 mark.title = task.done ? "未完了に戻す" : "完了にする";
                 renderMark();
                 updateCount();
@@ -321,6 +332,8 @@
               // grant前・実行中に共通ロックのPortが切断されても、楽観表示と
               // disabled状態を残さず、最新データの再読込へ戻す。
               task.done = wasDone;
+              if (hadCompletedAt) task.completedAt = previousCompletedAt;
+              else delete task.completedAt;
               mark.disabled = false;
               item.classList.toggle("done", wasDone);
               mark.title = wasDone ? "未完了に戻す" : "完了にする";
@@ -392,6 +405,15 @@
     SyncGuard.when(() => {
       refreshButton.disabled = false;
       render();
+      void TaskLifecycle.cleanup(storageMode)
+        .then((result) => {
+          if (result.failed > 0) {
+            showStatus(`${result.deleted}件を削除しましたが、${result.failed}授業の整理に失敗しました`);
+          }
+        })
+        .catch((error) => {
+          showStatus(`完了タスクを自動整理できませんでした: ${error.message}`);
+        });
     });
   });
 })();

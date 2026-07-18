@@ -138,11 +138,16 @@
       gap: 1px;
     }
 
-    ul.tasks li .task-created {
+    ul.tasks li .task-created,
+    ul.tasks li .task-completed {
       color: #66727a;
       font-size: 11px;
       line-height: 1.35;
       text-decoration: none;
+    }
+
+    ul.tasks li .task-completed {
+      color: #24743e;
     }
 
     ul.tasks li .mark {
@@ -183,6 +188,7 @@
   <div id="status"></div>
   <script src="sync-guard.js"></script>
   <script src="mutation-lock.js"></script>
+  <script src="task-lifecycle.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
