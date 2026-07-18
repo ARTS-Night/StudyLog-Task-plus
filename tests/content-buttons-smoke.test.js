@@ -37,6 +37,7 @@ class FakeElement {
     this._textContent = "";
     this.listeners = new Map();
     this.isConnected = true;
+    this.style = {};
   }
 
   get textContent() {
@@ -95,6 +96,19 @@ class FakeElement {
     this[name] = String(value);
   }
 
+  getBoundingClientRect() {
+    return { top: 20, right: 140, bottom: 44, left: 20, width: 120, height: 24 };
+  }
+
+  remove() {
+    if (this.parentElement) {
+      const index = this.parentElement.children.indexOf(this);
+      if (index >= 0) this.parentElement.children.splice(index, 1);
+    }
+    this.parentElement = null;
+    this.isConnected = false;
+  }
+
   focus() {}
 }
 
@@ -131,8 +145,9 @@ function makeClassLink(classId, subject) {
 }
 
 const fixtures = [
-  makeClassLink("100", "同じ授業"),
-  makeClassLink("100", "同じ授業"),
+  // DOMから科目名を取れない場合でも、保存済みの正しい科目名を維持する。
+  makeClassLink("100", "不明な授業"),
+  makeClassLink("100", "不明な授業"),
   makeClassLink("200", "別の授業")
 ];
 
@@ -256,6 +271,7 @@ class FakeMutationObserver {
   disconnect() {}
 }
 
+let reloadCalls = 0;
 const context = vm.createContext({
   alert() {},
   chrome,
@@ -269,8 +285,23 @@ const context = vm.createContext({
   setTimeout,
   clearTimeout,
   SyncGuard,
-  window: { location: { reload() {} } }
+  window: {
+    innerHeight: 800,
+    innerWidth: 1200,
+    location: { reload() { reloadCalls += 1; } }
+  }
 });
+
+let rejectNextMutation = false;
+context.TaskMutationLock = {
+  request(callback) {
+    if (rejectNextMutation) {
+      rejectNextMutation = false;
+      return Promise.reject(new Error("fake mutation lock disconnect"));
+    }
+    return Promise.resolve().then(callback);
+  }
+};
 
 function click(element) {
   assert.ok(element, "the element to click must exist");
@@ -309,6 +340,23 @@ async function main() {
     assert.equal(button.textContent, "タスク (1)");
   });
   assert.equal(buttons[2].dataset.tasks, "[]", "another class must not be refreshed");
+
+  (sameClassButtons[1].listeners.get("mouseenter") || []).forEach((listener) => listener());
+  let preview = document.getElementById("lms-memo-preview-popup");
+  assert.ok(preview, "hover preview must open for an incomplete task");
+  let previewDate = findElement(preview, (element) => hasClass(element, "lms-preview-task-created"));
+  assert.match(previewDate.textContent, /^追加 \d{1,2}月\d{1,2}日$/);
+  assert.doesNotMatch(previewDate.textContent, /\d{4}年/);
+
+  const refreshedValue = {
+    subject: "同じ授業",
+    tasks: [{ id: "task-1", text: "プレビューも更新", done: false, createdAt }]
+  };
+  storageListeners.forEach((listener) => listener({ "100": { newValue: refreshedValue } }, "sync"));
+  preview = document.getElementById("lms-memo-preview-popup");
+  assert.match(preview.textContent, /プレビューも更新/, "an open preview must refresh with its class buttons");
+  (sameClassButtons[1].listeners.get("mouseleave") || []).forEach((listener) => listener());
+  assert.equal(document.getElementById("lms-memo-preview-popup"), null);
 
   const legacyValue = {
     subject: "同じ授業",
@@ -378,9 +426,13 @@ async function main() {
 
   assert.equal(syncSetCalls.length, 1, "saving from the calendar popup must call sync storage.set once");
   const storedTask = initialTasks["100"].tasks[0];
+  assert.equal(initialTasks["100"].subject, "同じ授業", "an unknown DOM label must not overwrite the stored subject");
   assert.equal(storedTask.text, "実操作で追加");
   assert.equal(typeof storedTask.createdAt, "number", "a newly saved task must include createdAt");
   assert.ok(storedTask.createdAt >= saveStartedAt, "createdAt must be recorded when the task is added");
+  const visibleCreatedDate = findElement(popup, (element) => hasClass(element, "lms-task-created"));
+  assert.match(visibleCreatedDate.textContent, /^追加 \d{1,2}月\d{1,2}日$/);
+  assert.doesNotMatch(visibleCreatedDate.textContent, /\d{4}年/);
   sameClassButtons.forEach((button) => {
     const visibleTasks = JSON.parse(button.dataset.tasks);
     assert.equal(visibleTasks.length, 1, "saving must refresh every occurrence of the same class");
@@ -398,6 +450,18 @@ async function main() {
     assert.equal(button.dataset.tasks, "[]", "removing the last task must clear every occurrence");
     assert.equal(button.textContent, "タスク");
   });
+
+  click(addButton);
+  textarea.value = "ロック切断時は戻す";
+  rejectNextMutation = true;
+  click(saveButton);
+  await settle();
+  assert.equal(syncSetCalls.length, 1, "a rejected common lock must not write optimistic task data");
+  sameClassButtons.forEach((button) => {
+    assert.equal(button.dataset.tasks, "[]", "a rejected save must roll every occurrence back to storage");
+  });
+
+  assert.equal(reloadCalls, 0, "task changes must never reload the whole LMS page");
 
   console.log("content button refresh smoke test passed");
 }

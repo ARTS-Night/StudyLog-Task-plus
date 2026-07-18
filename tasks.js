@@ -8,7 +8,6 @@
   const PENDING_ADD_PREFIX = "__pending_task_add__:";
   const PENDING_FLUSH_LOCK = "stalog-task-pending-flush";
   const CLASS_LOCK_PREFIX = "stalog-task-class:";
-  const MUTATION_LOCK = "stalog-task-storage-mutation";
   const UNKNOWN_YEAR = "unknown";
   const CATALOG_STALE_AFTER = 24 * 60 * 60 * 1000;
   const CATALOG_TAB_TIMEOUT = 20000;
@@ -46,6 +45,7 @@
   let editReturnFocus = null;
   let statusTimer = null;
   let refreshTimer = null;
+  let loadGeneration = 0;
   let refreshAfterBusy = false;
   let flushAfterBusy = false;
   let flushingPending = false;
@@ -276,6 +276,18 @@
       return navigator.locks.request(name, { mode: "exclusive" }, callback);
     }
     return callback();
+  }
+
+  async function getCurrentTaskStorage() {
+    const result = await storageGet(chrome.storage.local, [MODE_KEY]);
+    const latestMode = result[MODE_KEY] === "local" ? "local" : "sync";
+    if (latestMode !== mode) {
+      mode = latestMode;
+      storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
+      watchedArea = mode;
+      loadGeneration += 1;
+    }
+    return storage;
   }
 
   async function readPendingAdds() {
@@ -677,11 +689,20 @@
 
   async function loadAll(options) {
     const settings = options || {};
+    const generation = ++loadGeneration;
+    const requestedStorage = storage;
+    const localRequest = storageGet(chrome.storage.local, null);
+    const taskRequest = requestedStorage === chrome.storage.local
+      ? localRequest
+      : storageGet(requestedStorage, null);
     try {
       const [localItems, taskItems] = await Promise.all([
-        storageGet(chrome.storage.local, null),
-        storageGet(storage, null)
+        localRequest,
+        taskRequest
       ]);
+      // 保存先変更や連続更新で古い読み込みが後から完了しても、現在の画面を
+      // 過去の保存領域・スナップショットへ巻き戻さない。
+      if (generation !== loadGeneration || requestedStorage !== storage) return false;
       fullCatalog = normalizeCatalog(localItems[CATALOG_KEY]);
       partialCatalog = normalizeCatalog(localItems[PARTIAL_CATALOG_KEY]);
       catalog = combineCatalogs(fullCatalog, partialCatalog);
@@ -694,6 +715,7 @@
       if (!settings.silent) showStatus("最新の状態を読み込みました", false);
       return true;
     } catch (error) {
+      if (generation !== loadGeneration || requestedStorage !== storage) return false;
       pendingStateUnknown = true;
       renderFatal(makeError("タスクを読み込めませんでした", error).message);
       showStatus(makeError("読み込みに失敗しました", error).message, true);
@@ -707,20 +729,21 @@
     let saved = false;
     let refreshed = true;
     try {
-      await withLock(MUTATION_LOCK, () =>
-        withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
-          const result = await storageGet(storage, [classId]);
+      await TaskMutationLock.request(async () => {
+        const mutationStorage = await getCurrentTaskStorage();
+        return withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
+          const result = await storageGet(mutationStorage, [classId]);
           const latest = normalizeEntry(result[classId], classId);
           const nextTasks = mutate(latest.tasks.slice());
           if (!Array.isArray(nextTasks)) throw new Error("タスクの更新内容が正しくありません");
           const subject = latest.subject || subjectHint || "";
           if (nextTasks.length === 0) {
-            await storageRemove(storage, [classId]);
+            await storageRemove(mutationStorage, [classId]);
           } else {
-            await storageSet(storage, { [classId]: { subject, tasks: nextTasks } });
+            await storageSet(mutationStorage, { [classId]: { subject, tasks: nextTasks } });
           }
-        })
-      );
+        });
+      });
       saved = true;
       refreshed = await loadAll({ silent: true, preserveYear: true });
     } catch (error) {
@@ -745,7 +768,7 @@
         year: yearSelect.value,
         createdAt
       };
-      await appendPendingAdd(item);
+      await withLock(PENDING_FLUSH_LOCK, () => appendPendingAdd(item));
       saved = true;
       renderTasks();
       newTaskText.value = "";
@@ -773,7 +796,8 @@
     let snapshot = [];
     try {
       return await withLock(PENDING_FLUSH_LOCK, () =>
-        withLock(MUTATION_LOCK, async () => {
+        TaskMutationLock.request(async () => {
+          const mutationStorage = await getCurrentTaskStorage();
           snapshot = await readPendingAdds();
           pendingAdds = snapshot;
           renderTasks();
@@ -792,7 +816,7 @@
 
           for (const [classId, additions] of byClass) {
             await withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
-              const result = await storageGet(storage, [classId]);
+              const result = await storageGet(mutationStorage, [classId]);
               const latest = normalizeEntry(result[classId], classId);
               additions.forEach((item) => {
                 const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
@@ -810,7 +834,7 @@
                 latest.tasks.push(task);
               });
               const subject = latest.subject || additions[0].subject || "";
-              await storageSet(storage, { [classId]: { subject, tasks: latest.tasks } });
+              await storageSet(mutationStorage, { [classId]: { subject, tasks: latest.tasks } });
             });
             await removePendingAddIds(additions.map((item) => item.id));
           }
@@ -1051,8 +1075,8 @@
           scheduleRefresh();
         }
         showStatus(mode === "local" ? "保存先をこの端末に切り替えました" : "保存先を同期領域に切り替えました", false);
+        return;
       }
-      return;
     }
 
     const catalogChanged = areaName === "local"
@@ -1081,7 +1105,7 @@
     // この間も端末ローカルの授業一覧と保留キューだけは上で反映する。
     if (!ready) return;
 
-    const tasksChanged = areaName === watchedArea && Object.keys(changes).some((key) => !key.startsWith("__"));
+    const tasksChanged = areaName === watchedArea && Object.keys(changes).some((key) => /^\d+$/.test(key));
     if (!catalogChanged && !tasksChanged) return;
     if (busy) {
       refreshAfterBusy = true;

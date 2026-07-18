@@ -34,6 +34,7 @@ Tree Ivy Replanted を併用する場合も、右サイドで開いた授業ペ�
 - 専用タスク画面の初回同期は右下の通知だけで進み、授業一覧があれば待機中でもタスクを追加できます。追加分は端末内の保留キューへ直ちに保存され、同期確認後に既存データへ重複なく追加されます。
 - 設定ページでは、タスクの JSON エクスポート/インポート、完了済みタスクの一括削除、現在の保存先にある全タスクの削除、ストレージ使用量の確認ができます。授業カタログ、端末設定、同期チェックの印、反対側の保存先に残したバックアップは「全タスクを削除」では消えません。設定ページは LMS のナビバーに追加される「タスク設定」リンク、ツールバーポップアップの歯車ボタン、拡張機能管理画面の「オプション」のいずれからでも開けます。
 - タスクを保存すると画面下に結果を表示します。同期モードでは「Chrome の同期がオンなら他端末にも反映」と案内し、Chrome の同期完了そのものを断定しません。ツールバーポップアップの 🔄 ボタンは、Chrome のストレージへすでに届いている内容を画面へ読み込み直すボタンです。
+- 授業ページ、専用画面、ツールバーポップアップ、設定画面から同時に変更しても、拡張機能内の共通キューで保存処理を順番に実行し、同じ端末内の読み書き競合を防ぎます。
 - 設定ページの「同期チェック」で、同期が正しく動いているかを確認できます。各パソコンで「この端末の印を残す」を押し、別のパソコンの設定ページにその印が表示されれば同期は正常です。
 - `manifest.json` に `key` を固定してあるため、どのパソコンで読み込んでも拡張機能 ID が同じになり、`chrome.storage.sync` の同期が機能します（`key` を消したり変えたりすると ID が変わり、同期されなくなるので注意）。
 - 設定ページの「保存先」で、Google アカウントで同期（`chrome.storage.sync`・他のパソコンと共有、上限約100KB）と、この端末のみ（`chrome.storage.local`・ローカル保存、上限約10MB）を切り替えられます。切り替え時には現在のタスクが新しい保存先へ自動的にコピーされます（元の保存先のデータはバックアップとして残ります）。この設定は端末ごとに保持されます。
@@ -100,6 +101,7 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 - `class-catalog.js`: ホームとマイページから年度・授業 ID・科目名を取得し、専用画面用の授業カタログを保存します。
 - `content.js`: ページにタスク管理ボタンとポップアップを追加する本体です。
 - `sync-guard.js`: 初回同期ガード（同期データが届くまで読み書きを待たせる共通処理）です。授業ページとツールバーポップアップの両方で使います。
+- `mutation-lock.js` / `mutation-lock-background.js`: 画面やiframeをまたぐ保存処理をFIFOで直列化する共通ロックとService Workerです。
 - `popup.html` / `popup.js`: ツールバーアイコンをクリックしたときに表示される全タスク一覧です（完了/未完了の切り替えが可能）。
 - `tasks.html` / `tasks.js`: 年度・授業を選び、タスクの追加・編集・削除・完了切替を行う専用画面です。
 - `settings.html` / `settings.js`: 設定ページ（バックアップ・データ整理・使用量確認）です。
@@ -107,6 +109,9 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 - `tests/tasks-smoke.test.js`: 偽 DOM・偽 Chrome API 上で、初回同期中の即時追加・保留キュー・追加日時の保持・旧形式互換・終了警告を確認するスモークテストです。
 - `tests/manifest-frames.test.js`: Tree Ivy の iframe 互換に必要な manifest 設定を静的に確認する契約テストです。
 - `tests/content-buttons-smoke.test.js`: 同じ授業IDの複数ボタンが、ページ再読み込みなしで同時更新されることを確認するスモークテストです。
+- `tests/popup-smoke.test.js`: 同期待ち中の操作制限、外部変更の再描画、旧形式タスクの完了切替を確認します。
+- `tests/mutation-lock.test.js`: 共通変更キューのFIFO、heartbeat、例外・切断後の解放を確認します。
+- `tests/sync-guard.test.js`: 初回同期通知、空データのtimeout、localモードを確認します。
 
 ## 開発と検証
 
@@ -116,6 +121,9 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 node tests/tasks-smoke.test.js
 node tests/manifest-frames.test.js
 node tests/content-buttons-smoke.test.js
+node tests/popup-smoke.test.js
+node tests/mutation-lock.test.js
+node tests/sync-guard.test.js
 Get-ChildItem -File -Filter *.js | ForEach-Object { node --check $_.FullName }
 ```
 

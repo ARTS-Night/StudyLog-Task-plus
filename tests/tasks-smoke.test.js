@@ -217,9 +217,11 @@ const chrome = {
 };
 
 const lockTails = new Map();
+const requestedLocks = [];
 const navigator = {
   locks: {
     request(name, options, callback) {
+      requestedLocks.push(name);
       const run = typeof options === "function" ? options : callback;
       const previous = lockTails.get(name) || Promise.resolve();
       const current = previous.then(run);
@@ -251,6 +253,10 @@ const context = vm.createContext({
   setTimeout: fakeSetTimeout,
   clearTimeout: fakeClearTimeout
 });
+
+context.TaskMutationLock = {
+  request(callback) { return Promise.resolve().then(callback); }
+};
 
 function settle(turns = 20) {
   let promise = Promise.resolve();
@@ -290,6 +296,10 @@ async function main() {
   const pendingKeys = Object.keys(localArea._data).filter((key) => key.startsWith("__pending_task_add__:"));
   assert.equal(pendingKeys.length, 1, "pending task must be stored under an independent key");
   assert.equal(localArea._data[pendingKeys[0]].text, "同期前の追加");
+  assert.ok(
+    requestedLocks.includes("stalog-task-pending-flush"),
+    "pending additions must use the same lock as flush and destructive settings operations"
+  );
   const pendingCreatedAt = localArea._data[pendingKeys[0]].createdAt;
   assert.ok(Number.isFinite(pendingCreatedAt) && pendingCreatedAt >= now, "pending task must record its creation time");
   const pendingDates = findByClass(elements.get("task-groups"), "task-created");
@@ -338,6 +348,15 @@ async function main() {
     2,
     "legacy tasks without createdAt must not receive a fabricated date"
   );
+
+  // 保存先切替のMODE通知より先に共通キューからgrantされる競合を再現する。
+  // mutation開始後にMODE_KEYを読み直し、古いsync領域ではなくlocalへ保存すること。
+  const syncTaskCountBeforeModeRace = syncArea._data["100"].tasks.length;
+  localArea._data.__storage_mode__ = "local";
+  await submitTask("保存先切替直後の追加");
+  assert.equal(syncArea._data["100"].tasks.length, syncTaskCountBeforeModeRace);
+  assert.equal(localArea._data["100"].tasks[0].text, "保存先切替直後の追加");
+  assert.ok(Number.isFinite(localArea._data["100"].tasks[0].createdAt));
 
   const readyUnload = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined };
   windowListeners.get("beforeunload")[0](readyUnload);

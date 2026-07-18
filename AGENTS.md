@@ -6,7 +6,7 @@
 
 - 岩崎学園の「スタログ」へ授業別タスク管理を追加する、Manifest V3 の Chrome 拡張機能です。
 - Chrome 上の表示名は「スタログ授業メモ」、`manifest.json` の現在のバージョンは `1.2.0` です。
-- Vanilla JavaScript / HTML / CSS のみで、ビルド処理、`package.json`、外部実行時依存、バックグラウンド Service Worker はありません。
+- Vanilla JavaScript / HTML / CSS のみで、ビルド処理、`package.json`、外部実行時依存はありません。軽量な Service Worker は、実行コンテキストをまたぐタスク変更の排他制御だけに使用します。
 - 対象は Chrome デスクトップと `https://portal.iwasaki.ac.jp/` 配下です。外部サーバーや Google API は使わず、データは Chrome Extension Storage に保存します。
 - UI、コメント、ドキュメント、コミットメッセージは、特別な理由がない限り日本語を維持してください。
 
@@ -25,6 +25,8 @@
 | `manifest.json` | Manifest V3 設定、固定拡張ID、content script の注入範囲 |
 | `content.js` | ホームのタスクボタン、ポップアップ、授業詳細の埋め込みパネル、ナビリンク |
 | `sync-guard.js` | Chrome Sync の初回ダウンロード待ちを扱う共通ガード |
+| `mutation-lock.js` | Service Worker の共通変更キューを利用するクライアント |
+| `mutation-lock-background.js` | 全画面・content script の変更を FIFO で直列化する Service Worker |
 | `class-catalog.js` | ホームとマイページから年度・授業ID・科目名を抽出して保存 |
 | `popup.html` / `popup.js` | Chrome ツールバーの全タスク一覧 |
 | `tasks.html` / `tasks.js` | 年度別の専用管理画面、授業一覧の背景取得、保留タスクの反映 |
@@ -32,6 +34,9 @@
 | `tests/tasks-smoke.test.js` | 初回同期、保留反映、追加日時、旧形式を確認するランタイムスモークテスト |
 | `tests/manifest-frames.test.js` | Tree Ivy iframe 互換を守る manifest 契約テスト |
 | `tests/content-buttons-smoke.test.js` | 同一授業IDの複数ボタンを一括更新するランタイムスモークテスト |
+| `tests/popup-smoke.test.js` | 同期ガード、外部変更反映、旧形式の完了切替を確認するテスト |
+| `tests/mutation-lock.test.js` | 実行コンテキスト横断の変更キューと異常切断を確認するテスト |
+| `tests/sync-guard.test.js` | 初回同期通知・空データtimeout・localモードを確認するテスト |
 | `344赤池璃月＿企画書.md` / `344赤池璃月_研究資料.md` | ユーザーの研究文書。明示依頼なしに改稿しない |
 | `StudyLog-Task-plus.zip` | 追跡済みの配布物。リリース依頼なしに再生成・ステージしない |
 
@@ -40,12 +45,12 @@
 `manifest.json` の content script は意図的に分離されています。
 
 1. `class-catalog.js` は `https://portal.iwasaki.ac.jp/lms/*` の最上位文書と、マイページ `sMyPage.php` で実行します。
-2. `sync-guard.js`、続いて `content.js` は LMS の全フレームで実行します。
+2. `sync-guard.js`、`mutation-lock.js`、続いて `content.js` は LMS の全フレームで実行します。
 3. Tree Ivy Replanted は授業詳細を同一オリジンの iframe で右側へ開くため、タスクUI側には `all_frames: true` が必要です。
 4. 授業カタログ処理を全フレームへ入れると、iframeごとに抽出・取得・メッセージリスナーが重複します。2つの manifest エントリを統合しないでください。
-5. `sync-guard.js` は、それを利用する `content.js`、`popup.js`、`tasks.js`、`settings.js` より必ず先に読み込んでください。
+5. `sync-guard.js` と `mutation-lock.js` は、それらを利用する `content.js`、`popup.js`、`tasks.js`、`settings.js` より必ず先に読み込んでください。
 
-拡張機能に Service Worker はありません。専用画面によるマイページ取得は `chrome.tabs.create({ active: false })` と content script のメッセージで完結します。取得成功時だけ送信元タブと更新日時を検証して背景タブを閉じ、失敗時はログイン状態を確認できるよう残します。
+`mutation-lock-background.js` は DOM やタスク本体へ触れず、`runtime.connect()` の Port を要求順に1件ずつ許可します。content script の Web Locks はホスト側、拡張画面の Web Locks は拡張機能側に分かれるため、この Service Worker のキューを全体変更ロックとして使用します。専用画面によるマイページ取得は `chrome.tabs.create({ active: false })` と content script のメッセージで完結します。取得成功時だけ送信元タブと更新日時を検証して背景タブを閉じ、失敗時はログイン状態を確認できるよう残します。
 
 ## データ契約
 
@@ -143,11 +148,13 @@
 ### 同時更新と保存
 
 - 書き込み前に対象授業の最新値をストレージから読み直し、画面上の古い配列で上書きしないでください。
-- 利用可能なら Web Locks を維持してください。ロック名は次のとおりです。
+- 全画面共通の変更排他には `TaskMutationLock.request()` を使用してください。Service Worker の Port 名は `stalog-task-mutation-lock` です。個別画面だけの Web Locks は次の名前を維持します。
   - 保留反映: `stalog-task-pending-flush`
-  - 全体変更: `stalog-task-storage-mutation`
   - 授業単位: `stalog-task-class:<classId>`
-- 複数ロックが必要な場合は、保留反映 → 全体変更 → 授業単位の順に取得し、デッドロックを避けます。
+- 複数ロックが必要な場合は、保留反映 → `TaskMutationLock` → 授業単位の順に取得し、デッドロックを避けます。
+- `TaskMutationLock` の Port は待機中・実行中とも heartbeat を送り、正常終了・例外・画面終了のいずれでも切断して次の要求を許可します。ロックをローカルの Web Locks だけへ戻さないでください。
+- `TaskMutationLock` の grant 待ち中に保存先が切り替わる可能性があります。grant 後・タスク読込前に `__storage_mode__` を読み直し、その変更処理で使う storage area を固定してください。`storage.onChanged` の到着順へ依存してはいけません。
+- Port切断やService Worker更新で `TaskMutationLock.request()` がrejectした場合は、保存中フラグ、disabled状態、楽観更新を必ず解除し、ストレージの正しい値へ戻してください。
 - `set`、`get`、`remove` の callback 後は `chrome.runtime.lastError` を確認します。
 - タスクIDは更新競合と保留キューの重複排除に使うため、編集や完了切替で変更しないでください。
 
@@ -175,12 +182,18 @@
 node tests/tasks-smoke.test.js
 node tests/manifest-frames.test.js
 node tests/content-buttons-smoke.test.js
+node tests/popup-smoke.test.js
+node tests/mutation-lock.test.js
+node tests/sync-guard.test.js
 Get-ChildItem -File -Filter *.js | ForEach-Object { node --check $_.FullName }
 ```
 
 - `tasks-smoke.test.js` は偽DOM・偽Chrome API上で、初回同期待ち、保留追加、追加日時の保持、旧形式、終了警告を確認します。
 - `manifest-frames.test.js` は content script の分離と `all_frames` を静的検査します。
 - `content-buttons-smoke.test.js` は同じ授業IDの複数ボタンと追加日時の保持を偽DOM上で確認します。
+- `popup-smoke.test.js` は同期待ち中の書込み禁止、変更通知の再描画、IDなし旧タスクの識別を確認します。
+- `mutation-lock.test.js` はService WorkerのFIFO変更キュー、heartbeat、例外・切断後の解放を確認します。
+- `sync-guard.test.js` は同期通知と初回getの競合、空アカウントtimeout、localモードを確認します。
 - いずれも実スタログや実Chrome Syncを使う E2E テストではありません。
 
 実機確認では、拡張機能を再読み込みした後にスタログのタブも再読み込みし、次を確認します。

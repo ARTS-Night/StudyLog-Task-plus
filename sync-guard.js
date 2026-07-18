@@ -50,32 +50,39 @@ const SyncGuard = (() => {
       return;
     }
 
+    // get() の完了後に listener を登録すると、その狭い間に届いた初回同期通知を
+    // 取りこぼして20秒待ちになる。先に監視を始め、get / change / timeout のうち
+    // 最初に確認できた経路だけで完了させる。
+    let settled = false;
+    let timeoutId = null;
+    const finish = (persistFlag) => {
+      if (settled) return;
+      settled = true;
+      chrome.storage.onChanged.removeListener(listener);
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      markReady(persistFlag);
+    };
+    const listener = (changes, areaName) => {
+      if (areaName !== "sync") return;
+      finish(true);
+    };
+    chrome.storage.onChanged.addListener(listener);
+
+    // ponytail: 本当に空のアカウント（新規ユーザー）は判別できないため、
+    // 20 秒待っても何も届かなければ空とみなして許可する。
+    // ただし「確認済み」フラグは保存しない（回線が遅いだけの可能性があるので、
+    // 実データを確認できるまでは次回のページ表示でも再チェックさせる）
+    timeoutId = setTimeout(() => finish(false), 20000);
+
     chrome.storage.sync.get(null, (items) => {
       // 読み取り自体が失敗した場合は「データあり」と誤判定せず、
       // 下の onChanged / タイムアウト待ちに回す
-      if (!chrome.runtime.lastError && Object.keys(items).length > 0) {
+      if (!chrome.runtime.lastError && items && Object.keys(items).length > 0) {
         // ponytail: __sync_check__ などの内部キーだけでも「同期ダウンロードが
         // 動いた」合図とみなす（タスクキー限定にすると、印しか無いアカウントが
         // 毎回タイムアウト待ちになるため）。キー単位の取り残しは許容する。
-        markReady(true);
-        return;
+        finish(true);
       }
-
-      const listener = (changes, areaName) => {
-        if (areaName !== "sync") return;
-        chrome.storage.onChanged.removeListener(listener);
-        markReady(true);
-      };
-      chrome.storage.onChanged.addListener(listener);
-
-      // ponytail: 本当に空のアカウント（新規ユーザー）は判別できないため、
-      // 20 秒待っても何も届かなければ空とみなして許可する。
-      // ただし「確認済み」フラグは保存しない（回線が遅いだけの可能性があるので、
-      // 実データを確認できるまでは次回のページ表示でも再チェックさせる）
-      setTimeout(() => {
-        chrome.storage.onChanged.removeListener(listener);
-        markReady(false);
-      }, 20000);
     });
   }
 

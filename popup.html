@@ -40,6 +40,11 @@
       margin-left: auto;
     }
 
+    #btn-refresh:disabled {
+      cursor: wait;
+      opacity: 0.45;
+    }
+
     #btn-refresh:hover,
     #btn-open-list:hover,
     #btn-settings:hover {
@@ -134,8 +139,8 @@
     }
 
     ul.tasks li .task-created {
-      color: #999;
-      font-size: 10px;
+      color: #66727a;
+      font-size: 11px;
       line-height: 1.35;
       text-decoration: none;
     }
@@ -177,6 +182,7 @@
   <div class="note">○ をクリックで完了/未完了を切り替えできます。追加・編集・削除は専用画面から。</div>
   <div id="status"></div>
   <script src="sync-guard.js"></script>
+  <script src="mutation-lock.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

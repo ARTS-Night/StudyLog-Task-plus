@@ -15,6 +15,9 @@
     "page": "settings.html",
     "open_in_tab": true
   },
+  "background": {
+    "service_worker": "mutation-lock-background.js"
+  },
   "web_accessible_resources": [
     {
       "resources": [
@@ -42,6 +45,7 @@
       ],
       "js": [
         "sync-guard.js",
+        "mutation-lock.js",
         "content.js"
       ],
       "run_at": "document_idle",

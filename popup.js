@@ -1,9 +1,13 @@
 (function () {
   const content = document.getElementById("content");
   const MODE_KEY = "__storage_mode__";
-  const MUTATION_LOCK = "stalog-task-storage-mutation";
   const CLASS_LOCK_PREFIX = "stalog-task-class:";
   let storage = chrome.storage.sync;
+  let storageMode = "sync";
+  let renderGeneration = 0;
+  let renderTimer = null;
+  let activeMutations = 0;
+  let refreshAfterMutation = false;
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const ICON_PATHS = {
@@ -21,7 +25,13 @@
   });
 
   // 手動同期: ストレージから読み直して最新の同期データを表示する
-  document.getElementById("btn-refresh").addEventListener("click", () => {
+  const refreshButton = document.getElementById("btn-refresh");
+  refreshButton.disabled = true;
+  refreshButton.addEventListener("click", () => {
+    if (!SyncGuard.isReady()) {
+      showStatus("同期データを確認中です。完了後に更新してください");
+      return;
+    }
     render(() => showStatus("手元に届いている最新の同期データを表示しました"));
   });
 
@@ -34,24 +44,42 @@
     statusTimer = setTimeout(() => statusEl.classList.remove("show"), 2000);
   }
 
-  function showSavedStatus() {
+  function showSavedStatus(savedStorage = storage) {
     // Chrome の同期が実際にオンかどうかは検知できないため、断定しない文言にする
     showStatus(
-      storage === chrome.storage.sync
+      savedStorage === chrome.storage.sync
         ? "✓ 保存しました（同期がオンなら他の端末にも反映）"
         : "✓ 保存しました（この端末のみ）"
     );
   }
 
+  function getCurrentTaskStorage() {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.get([MODE_KEY], (result) => {
+        if (chrome.runtime.lastError || !result) {
+          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
+          return;
+        }
+        resolve(result[MODE_KEY] === "local" ? chrome.storage.local : chrome.storage.sync);
+      });
+    });
+  }
+
   function runClassMutation(classId, operation) {
-    const run = () => new Promise((resolve) => operation(resolve));
-    const withClassLock = () => navigator.locks && typeof navigator.locks.request === "function"
-      ? navigator.locks.request(`${CLASS_LOCK_PREFIX}${classId}`, { mode: "exclusive" }, run)
-      : run();
-    const pending = navigator.locks && typeof navigator.locks.request === "function"
-      ? navigator.locks.request(MUTATION_LOCK, { mode: "exclusive" }, withClassLock)
-      : withClassLock();
-    pending.catch((error) => showStatus(`保存に失敗しました: ${error.message}`));
+    const pending = TaskMutationLock.request(() => getCurrentTaskStorage().then((mutationStorage) => {
+      const run = () => new Promise((resolve) => operation(mutationStorage, resolve));
+      return navigator.locks && typeof navigator.locks.request === "function"
+        ? navigator.locks.request(`${CLASS_LOCK_PREFIX}${classId}`, { mode: "exclusive" }, run)
+        : run();
+    }));
+    activeMutations += 1;
+    return pending.finally(() => {
+        activeMutations = Math.max(0, activeMutations - 1);
+        if (activeMutations === 0 && refreshAfterMutation) {
+          refreshAfterMutation = false;
+          scheduleRender();
+        }
+      });
   }
 
   function createIcon(name, size, color) {
@@ -69,26 +97,52 @@
     return svg;
   }
 
-  function normalizeEntry(value) {
-    if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
-      return {
-        subject: typeof value.subject === "string" ? value.subject : "",
-        tasks: value.tasks.filter((task) => task && typeof task.text === "string")
-      };
-    }
+  function normalizeCreatedAt(value) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+    return Number.isNaN(new Date(value).getTime()) ? 0 : value;
+  }
 
+  function normalizeTasks(value, classId) {
     if (Array.isArray(value)) {
-      return {
-        subject: "",
-        tasks: value.filter((task) => task && typeof task.text === "string")
-      };
+      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
+      const ids = new Set();
+      return value
+        .filter((task) => task && typeof task.text === "string")
+        .map((task, index) => {
+          const baseId = typeof task.id === "string" && task.id !== ""
+            ? task.id
+            : `legacy-${stableClassId}-${index}`;
+          let id = baseId;
+          let suffix = index;
+          while (ids.has(id)) {
+            id = `${baseId}-${suffix}`;
+            suffix += 1;
+          }
+          ids.add(id);
+          const normalized = { id, text: task.text, done: task.done === true };
+          const createdAt = normalizeCreatedAt(task.createdAt);
+          if (createdAt) normalized.createdAt = createdAt;
+          return normalized;
+        });
     }
 
     if (typeof value === "string" && value.trim() !== "") {
-      return { subject: "", tasks: [{ text: value, done: false }] };
+      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
+      return [{ id: `legacy-${stableClassId}-0`, text: value, done: false }];
     }
 
-    return { subject: "", tasks: [] };
+    return [];
+  }
+
+  function normalizeEntry(value, classId) {
+    if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
+      return {
+        subject: typeof value.subject === "string" ? value.subject : "",
+        tasks: normalizeTasks(value.tasks, classId)
+      };
+    }
+
+    return { subject: "", tasks: normalizeTasks(value, classId) };
   }
 
   function createTaskMain(task) {
@@ -100,11 +154,7 @@
     text.textContent = task.text;
     main.appendChild(text);
 
-    const createdAt = typeof task.createdAt === "number"
-      && Number.isFinite(task.createdAt)
-      && task.createdAt > 0
-      ? task.createdAt
-      : 0;
+    const createdAt = normalizeCreatedAt(task.createdAt);
     if (!createdAt) return main;
     const date = new Date(createdAt);
     if (Number.isNaN(date.getTime())) return main;
@@ -122,7 +172,10 @@
   }
 
   function render(onDone) {
-    storage.get(null, (items) => {
+    const generation = ++renderGeneration;
+    const requestedStorage = storage;
+    requestedStorage.get(null, (items) => {
+      if (generation !== renderGeneration || requestedStorage !== storage) return;
       if (chrome.runtime.lastError) {
         content.innerHTML = "";
         const failed = document.createElement("div");
@@ -135,8 +188,8 @@
       content.innerHTML = "";
 
       const entries = Object.entries(items)
-        .filter(([classId]) => !classId.startsWith("__"))
-        .map(([classId, value]) => ({ classId, ...normalizeEntry(value) }))
+        .filter(([classId]) => /^\d+$/.test(classId))
+        .map(([classId, value]) => ({ classId, ...normalizeEntry(value, classId) }))
         .filter((entry) => entry.tasks.length > 0);
 
       if (entries.length === 0) {
@@ -201,6 +254,10 @@
           renderMark();
 
           mark.addEventListener("click", () => {
+            if (!SyncGuard.isReady()) {
+              showStatus("同期データを確認中のため、まだ変更できません");
+              return;
+            }
             // 保存が終わるまで同じボタンの連打を防ぐ（get/set が並行すると
             // 完了状態が意図と逆になることがある）
             if (mark.disabled) return;
@@ -212,7 +269,7 @@
             // 保存直前に読み直した最新データへ、このタスクの完了状態だけを反映する。
             // ポップアップを開いたときの配列を丸ごと保存すると、その後に他の端末で
             // 追加されたタスクを消してしまうため
-            runClassMutation(entry.classId, (releaseMutation) => {
+            runClassMutation(entry.classId, (mutationStorage, releaseMutation) => {
               const finish = () => {
                 mark.disabled = false;
                 releaseMutation();
@@ -225,19 +282,15 @@
                 finish();
               };
 
-              storage.get([entry.classId], (result) => {
+              mutationStorage.get([entry.classId], (result) => {
               if (chrome.runtime.lastError) {
                 revert(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
                 return;
               }
 
-              const latest = normalizeEntry(result && result[entry.classId]);
+              const latest = normalizeEntry(result && result[entry.classId], entry.classId);
               const list = latest.tasks.slice();
-              let index = task.id ? list.findIndex((t) => t.id === task.id) : -1;
-              if (index < 0) {
-                // 旧形式のタスクには id が無いことがあるため、内容で照合する
-                index = list.findIndex((t) => t.text === task.text && !!t.done === wasDone);
-              }
+              const index = list.findIndex((t) => t.id === task.id);
               if (index < 0) {
                 task.done = wasDone;
                 showStatus("このタスクは他の端末で変更されたため、一覧を読み直しました");
@@ -248,7 +301,7 @@
 
               list[index] = { ...list[index], done: task.done };
 
-              storage.set({ [entry.classId]: { subject: latest.subject || entry.subject, tasks: list } }, () => {
+              mutationStorage.set({ [entry.classId]: { subject: latest.subject || entry.subject, tasks: list } }, () => {
                 if (chrome.runtime.lastError) {
                   revert(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
                   return;
@@ -257,10 +310,20 @@
                 mark.title = task.done ? "未完了に戻す" : "完了にする";
                 renderMark();
                 updateCount();
-                showSavedStatus();
+                showSavedStatus(mutationStorage);
                 finish();
               });
               });
+            }).catch((error) => {
+              // grant前・実行中に共通ロックのPortが切断されても、楽観表示と
+              // disabled状態を残さず、最新データの再読込へ戻す。
+              task.done = wasDone;
+              mark.disabled = false;
+              item.classList.toggle("done", wasDone);
+              mark.title = wasDone ? "未完了に戻す" : "完了にする";
+              renderMark();
+              showStatus(`保存に失敗しました: ${error.message}`);
+              scheduleRender();
             });
           });
 
@@ -276,16 +339,38 @@
     });
   }
 
+  function scheduleRender() {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => {
+      if (!SyncGuard.isReady()) return;
+      render();
+    }, 60);
+  }
+
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes[MODE_KEY]) return;
-    storage = changes[MODE_KEY].newValue === "local"
-      ? chrome.storage.local
-      : chrome.storage.sync;
-    if (SyncGuard.isReady()) render();
+    if (areaName === "local" && changes[MODE_KEY]) {
+      const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
+      if (nextMode !== storageMode) {
+        storageMode = nextMode;
+        storage = storageMode === "local" ? chrome.storage.local : chrome.storage.sync;
+        if (SyncGuard.isReady()) scheduleRender();
+        return;
+      }
+    }
+
+    const tasksChanged = areaName === storageMode
+      && Object.keys(changes).some((key) => /^\d+$/.test(key));
+    if (!tasksChanged || !SyncGuard.isReady()) return;
+    if (activeMutations > 0) {
+      refreshAfterMutation = true;
+    } else {
+      scheduleRender();
+    }
   });
 
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
     const mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    storageMode = mode;
     if (mode === "local") {
       storage = chrome.storage.local;
     }
@@ -301,6 +386,9 @@
       content.appendChild(waiting);
     }
 
-    SyncGuard.when(render);
+    SyncGuard.when(() => {
+      refreshButton.disabled = false;
+      render();
+    });
   });
 })();

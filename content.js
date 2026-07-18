@@ -8,22 +8,29 @@
   const HAS_TEXT_CLASS = "lms-memo-has-text";
   // 保存先モード（設定ページで切り替え）: "sync" = Google アカウントで同期 / "local" = この端末のみ
   const MODE_KEY = "__storage_mode__";
-  const MUTATION_LOCK = "stalog-task-storage-mutation";
   const CLASS_LOCK_PREFIX = "stalog-task-class:";
   let storage = chrome.storage.sync;
   let storageMode = "sync";
 
-  function runClassMutation(classId, operation) {
-    const run = () => new Promise((resolve) => operation(resolve));
-    const withClassLock = () => navigator.locks && typeof navigator.locks.request === "function"
-      ? navigator.locks.request(`${CLASS_LOCK_PREFIX}${classId}`, { mode: "exclusive" }, run)
-      : run();
-    const pending = navigator.locks && typeof navigator.locks.request === "function"
-      ? navigator.locks.request(MUTATION_LOCK, { mode: "exclusive" }, withClassLock)
-      : withClassLock();
-    pending.catch((error) => {
-      alert(`タスクを保存できませんでした: ${error.message}`);
+  function getCurrentTaskStorage() {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.get([MODE_KEY], (result) => {
+        if (chrome.runtime.lastError || !result) {
+          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
+          return;
+        }
+        resolve(result[MODE_KEY] === "local" ? chrome.storage.local : chrome.storage.sync);
+      });
     });
+  }
+
+  function runClassMutation(classId, operation) {
+    return TaskMutationLock.request(() => getCurrentTaskStorage().then((mutationStorage) => {
+      const run = () => new Promise((resolve) => operation(mutationStorage, resolve));
+      return navigator.locks && typeof navigator.locks.request === "function"
+        ? navigator.locks.request(`${CLASS_LOCK_PREFIX}${classId}`, { mode: "exclusive" }, run)
+        : run();
+    }));
   }
 
   // Material Symbols (https://fonts.google.com/icons) の SVG パス。
@@ -198,8 +205,8 @@
 
       .lms-task-created,
       .lms-preview-task-created {
-        color: #8a9499;
-        font-size: 10px;
+        color: #66727a;
+        font-size: 11px;
         line-height: 1.35;
         text-decoration: none;
       }
@@ -489,6 +496,15 @@
         updateButtonState(button, rawValue);
       }
     });
+
+    // 表示中のホバープレビューも同じデータへ差し替える。ボタンだけ更新すると、
+    // マウスを動かすまで古いタスクが残って見えるため。
+    const preview = document.getElementById(PREVIEW_ID);
+    if (preview && preview.dataset.classId === normalizedId) {
+      const sourceButton = preview.sourceButton;
+      hidePreviewPopup();
+      if (sourceButton && sourceButton.isConnected) showPreviewPopup(sourceButton);
+    }
   }
 
   // 保存形式: { subject: string, tasks: [{id, text, done, createdAt?}] }
@@ -648,7 +664,7 @@
         destroy();
         return;
       }
-      if (changedArea !== watchedArea || !changes[classId]) return;
+      if (!SyncGuard.isReady() || changedArea !== watchedArea || !changes[classId]) return;
       // 自分の保存処理中に届いた変更はここでは反映できないため、
       // 保存完了後にストレージを読み直すよう印を付けておく
       if (saving) {
@@ -771,7 +787,8 @@
 
     // 保存に失敗したときなどにストレージの内容を正として画面を戻す
     function reloadFromStorage() {
-      storage.get([classId], (result) => {
+      getCurrentTaskStorage().then((currentStorage) => {
+        currentStorage.get([classId], (result) => {
         if (chrome.runtime.lastError || !result) {
           // 読み直しにも失敗した場合、空の一覧を表示すると全消えに見えるため
           // 現在の画面は変えずにエラーだけ知らせる
@@ -781,6 +798,9 @@
         tasks = normalizeEntry(result[classId], classId).tasks;
         renderList();
         onTasksChanged(tasks);
+        });
+      }).catch((error) => {
+        showToast(`タスクを読み込めませんでした: ${error.message}`);
       });
     }
 
@@ -792,8 +812,8 @@
       // ponytail: マージはタスクID単位。同じタスクを複数端末で同時に編集した場合と
       // 科目名は後勝ちのまま。フィールド単位の統合が必要になったら task.updatedAt を導入する
       // 保存済みの科目名がある場合は上書きしない（授業ページでは科目名が取れないことがあるため）
-      runClassMutation(classId, (releaseMutation) => {
-        storage.get([classId], (result) => {
+      runClassMutation(classId, (mutationStorage, releaseMutation) => {
+        mutationStorage.get([classId], (result) => {
         if (chrome.runtime.lastError) {
           saving = false;
           saveQueue.length = 0;
@@ -804,14 +824,15 @@
         }
 
         const existing = normalizeEntry(result[classId], classId);
-        const subject = subjectName || existing.subject;
+        const detectedSubject = subjectName && subjectName !== "不明な授業" ? subjectName : "";
+        const subject = existing.subject || detectedSubject;
         const merged = ops.reduce(applyOp, existing.tasks);
 
         const writeMerged = (callback) => {
           if (merged.length === 0) {
-            storage.remove([classId], callback);
+            mutationStorage.remove([classId], callback);
           } else {
-            storage.set({ [classId]: { subject, tasks: merged } }, callback);
+            mutationStorage.set({ [classId]: { subject, tasks: merged } }, callback);
           }
         };
 
@@ -828,7 +849,7 @@
           tasks = merged;
           renderList();
           onTasksChanged(tasks);
-          showSavedToast();
+          showSavedToast(mutationStorage);
           releaseMutation();
           if (saveQueue.length > 0) {
             processSaveQueue();
@@ -839,6 +860,14 @@
           }
         });
         });
+      }).catch((error) => {
+        // Service Workerの更新・クラッシュなどで共通ロックへ接続できなかった場合も、
+        // 保存中のまま固めずストレージを正として楽観変更を戻す。
+        saving = false;
+        refreshAfterSave = false;
+        saveQueue.length = 0;
+        alert(`タスクを保存できませんでした: ${error.message}\n変更は取り消されます。`);
+        reloadFromStorage();
       });
     }
 
@@ -1080,6 +1109,8 @@
     const preview = document.createElement("div");
     preview.id = PREVIEW_ID;
     preview.className = "lms-memo-preview-popup";
+    preview.dataset.classId = button.dataset.classId || "";
+    preview.sourceButton = button;
 
     const list = document.createElement("ul");
     list.className = "lms-preview-task-list";
@@ -1136,10 +1167,10 @@
     toastTimer = setTimeout(() => toast.classList.remove("show"), 2200);
   }
 
-  function showSavedToast() {
+  function showSavedToast(savedStorage = storage) {
     // Chrome の同期が実際にオンかどうかは拡張機能からは検知できないため、断定しない文言にする
     showToast(
-      storage === chrome.storage.sync
+      savedStorage === chrome.storage.sync
         ? "✓ 保存しました（Chrome の同期がオンなら他の端末にも反映されます）"
         : "✓ 保存しました（この端末のみ）"
     );

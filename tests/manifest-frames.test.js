@@ -17,9 +17,26 @@ assert.ok(taskEntry.matches.includes(lmsMatch), "タスク UI は LMS 配下を�
 assert.equal(taskEntry.all_frames, true, "右サイド iframe にもタスク UI を読み込む");
 assert.deepEqual(
   taskEntry.js,
-  ["sync-guard.js", "content.js"],
-  "同期ガードを content.js より先に読み込む"
+  ["sync-guard.js", "mutation-lock.js", "content.js"],
+  "同期ガードと共通変更ロックを content.js より先に読み込む"
 );
+
+assert.equal(
+  manifest.background && manifest.background.service_worker,
+  "mutation-lock-background.js",
+  "全実行コンテキストの変更を直列化するService Workerを維持する"
+);
+
+[
+  ["popup.html", "popup.js"],
+  ["tasks.html", "tasks.js"],
+  ["settings.html", "settings.js"]
+].forEach(([htmlFile, mainScript]) => {
+  const html = fs.readFileSync(path.join(__dirname, "..", htmlFile), "utf8");
+  const lockIndex = html.indexOf('<script src="mutation-lock.js"></script>');
+  const mainIndex = html.indexOf(`<script src="${mainScript}"></script>`);
+  assert.ok(lockIndex >= 0 && lockIndex < mainIndex, `${htmlFile} は共通変更ロックを先に読み込む`);
+});
 
 const catalogEntries = scripts.filter((entry) =>
   entry.matches.includes(lmsMatch) && entry.js && entry.js.includes("class-catalog.js")

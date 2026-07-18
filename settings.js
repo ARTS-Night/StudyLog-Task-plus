@@ -5,7 +5,6 @@
   const PENDING_ADDS_KEY = "__pending_task_adds__";
   const PENDING_ADD_PREFIX = "__pending_task_add__:";
   const PENDING_FLUSH_LOCK = "stalog-task-pending-flush";
-  const MUTATION_LOCK = "stalog-task-storage-mutation";
   let mode = "sync";
   let changingModeTo = null;
 
@@ -28,7 +27,12 @@
     return Object.entries(items).filter(([key]) => !key.startsWith("__"));
   }
 
-  function runMutationExclusive(operation, includePending) {
+  function runMutationExclusive(operation, includePending, onLockError) {
+    const requestedMode = mode;
+    const reportLockError = (error) => {
+      showStatus(`操作に失敗しました: ${error.message}`);
+      if (typeof onLockError === "function") onLockError(error);
+    };
     const run = () => new Promise((resolve) => {
       let finished = false;
       const finish = () => {
@@ -39,17 +43,34 @@
       try {
         operation(finish);
       } catch (error) {
-        showStatus(`操作に失敗しました: ${error.message}`);
+        reportLockError(error);
         finish();
       }
     });
-    const requestMutation = () => navigator.locks && typeof navigator.locks.request === "function"
-      ? navigator.locks.request(MUTATION_LOCK, { mode: "exclusive" }, run)
-      : run();
+    const requestMutation = () => TaskMutationLock.request(() => new Promise((resolve, reject) => {
+      chrome.storage.local.get([MODE_KEY], (result) => {
+        if (chrome.runtime.lastError || !result) {
+          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
+          return;
+        }
+        const actualMode = result[MODE_KEY] === "local" ? "local" : "sync";
+        if (actualMode !== requestedMode) {
+          mode = actualMode;
+          modeRadios.forEach((radio) => {
+            radio.checked = radio.value === mode;
+          });
+          updateSyncGuide();
+          refreshUsage();
+          reject(new Error("保存先が別の画面で変更されました。内容を確認してもう一度お試しください"));
+          return;
+        }
+        run().then(resolve, reject);
+      });
+    }));
     const pending = includePending && navigator.locks && typeof navigator.locks.request === "function"
       ? navigator.locks.request(PENDING_FLUSH_LOCK, { mode: "exclusive" }, requestMutation)
       : requestMutation();
-    pending.catch((error) => showStatus(`操作に失敗しました: ${error.message}`));
+    pending.catch(reportLockError);
   }
 
   function createTaskId() {
@@ -397,7 +418,7 @@
         });
       });
         });
-    }, true);
+    }, true, revertRadios);
   });
   });
 
