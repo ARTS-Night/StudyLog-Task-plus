@@ -204,7 +204,7 @@
           ? String(item.classId).trim()
           : "";
         const subject = typeof item.subject === "string" ? item.subject.trim() : "";
-        if (!classId || classId.startsWith("__") || !subject || seen.has(classId)) return;
+        if (!/^\d+$/.test(classId) || !subject || seen.has(classId)) return;
         seen.add(classId);
         clean.push({ classId, subject });
       });
@@ -346,7 +346,7 @@
 
   function readTaskEntries(items) {
     return Object.entries(items)
-      .filter(([key]) => !key.startsWith("__"))
+      .filter(([key]) => /^\d+$/.test(key))
       .map(([classId, value]) => {
         const entry = normalizeEntry(value, classId);
         const classInfo = catalogByClassId.get(classId);
@@ -459,8 +459,6 @@
     } else {
       catalogStatus.textContent = `${classCount}授業を取得済み`;
     }
-    updateControls();
-
     if (stale && !catalogRefreshAttempted) {
       catalogRefreshAttempted = true;
       setTimeout(() => openCatalogPage(true), 0);
@@ -1106,7 +1104,8 @@
     if (!ready) return;
 
     const tasksChanged = areaName === watchedArea && Object.keys(changes).some((key) => /^\d+$/.test(key));
-    if (!catalogChanged && !tasksChanged) return;
+    // カタログだけの変更は上で現在のタスクへ反映済み。全ストレージを再読込しない。
+    if (!tasksChanged) return;
     if (busy) {
       refreshAfterBusy = true;
       return;

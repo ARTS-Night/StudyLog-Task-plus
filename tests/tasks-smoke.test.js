@@ -142,7 +142,9 @@ function makeStorageArea(areaName, initial) {
   return {
     QUOTA_BYTES: areaName === "sync" ? 102400 : 10485760,
     _data: data,
+    _getCalls: 0,
     get(keys, callback) {
+      this._getCalls += 1;
       queueMicrotask(() => {
         if (keys === null) {
           callback(clone(data));
@@ -329,11 +331,39 @@ async function main() {
   assert.equal(syncArea._data["100"].tasks[0].createdAt, pendingCreatedAt, "flush must preserve or recover creation time");
   assert.equal(Object.keys(localArea._data).some((key) => key.startsWith("__pending_task_add__:")), false);
 
+  const taskReadsBeforeCatalogChange = syncArea._getCalls;
+  await new Promise((resolve) => {
+    localArea.set({
+      __class_catalog__: {
+        version: 1,
+        updatedAt: now + 1,
+        fullUpdatedAt: now + 1,
+        years: {
+          "2026": [
+            { classId: "100", subject: "更新後の授業名" },
+            { classId: "not-a-class", subject: "無効な授業ID" }
+          ]
+        }
+      }
+    }, resolve);
+  });
+  await settle();
+  assert.equal(
+    syncArea._getCalls,
+    taskReadsBeforeCatalogChange,
+    "catalog-only changes must not trigger a redundant full task storage read"
+  );
+  assert.equal(elements.get("class-select").children.length, 1, "catalog must ignore non-numeric class IDs");
+
   await submitTask("同期後の追加");
   assert.equal(syncArea._data["100"].tasks.length, 2, "ready state must save directly");
   assert.ok(Number.isFinite(syncArea._data["100"].tasks[1].createdAt), "ready task must record its creation time");
   assert.equal(findByClass(elements.get("task-groups"), "task-created").length, 2, "stored tasks must show creation dates");
 
+  syncArea._data["not-a-task"] = {
+    subject: "無効な保存キー",
+    tasks: [{ id: "invalid-key-task", text: "表示しない", done: false }]
+  };
   await new Promise((resolve) => {
     syncArea.set({
       "200": {
@@ -347,6 +377,11 @@ async function main() {
     findByClass(elements.get("task-groups"), "task-created").length,
     2,
     "legacy tasks without createdAt must not receive a fabricated date"
+  );
+  assert.equal(
+    findByClass(elements.get("task-groups"), "class-card").length,
+    2,
+    "task list must ignore non-numeric storage keys"
   );
 
   // 保存先切替のMODE通知より先に共通キューからgrantされる競合を再現する。

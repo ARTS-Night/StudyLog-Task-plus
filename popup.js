@@ -189,7 +189,14 @@
 
       const entries = Object.entries(items)
         .filter(([classId]) => /^\d+$/.test(classId))
-        .map(([classId, value]) => ({ classId, ...normalizeEntry(value, classId) }))
+        .map(([classId, value]) => {
+          const entry = normalizeEntry(value, classId);
+          return {
+            classId,
+            ...entry,
+            incompleteCount: entry.tasks.reduce((count, task) => count + (task.done ? 0 : 1), 0)
+          };
+        })
         .filter((entry) => entry.tasks.length > 0);
 
       if (entries.length === 0) {
@@ -202,11 +209,7 @@
       }
 
       // 未完了が多い授業を上に表示する
-      entries.sort((a, b) => {
-        const aIncomplete = a.tasks.filter((t) => !t.done).length;
-        const bIncomplete = b.tasks.filter((t) => !t.done).length;
-        return bIncomplete - aIncomplete;
-      });
+      entries.sort((a, b) => b.incompleteCount - a.incompleteCount);
 
       entries.forEach((entry) => {
         const section = document.createElement("div");

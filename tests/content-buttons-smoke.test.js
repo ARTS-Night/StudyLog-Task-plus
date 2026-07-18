@@ -201,6 +201,7 @@ const initialTasks = {
   "200": { subject: "別の授業", tasks: [] }
 };
 const storageListeners = [];
+const syncGetCalls = [];
 const syncSetCalls = [];
 const syncRemoveCalls = [];
 const chrome = {
@@ -217,6 +218,7 @@ const chrome = {
     sync: {
       get(keys, callback) {
         const names = Array.isArray(keys) ? keys : [keys];
+        syncGetCalls.push([...names]);
         queueMicrotask(() => {
           callback(Object.fromEntries(names.filter((key) => key in initialTasks).map((key) => [key, initialTasks[key]])));
         });
@@ -324,6 +326,11 @@ async function main() {
   const buttons = document.querySelectorAll(".lms-memo-btn");
   assert.equal(buttons.length, 3, "each calendar occurrence must have one task button");
   assert.deepEqual(buttons.map((button) => button.dataset.classId), ["100", "100", "200"]);
+  assert.deepEqual(
+    syncGetCalls,
+    [["100", "200"]],
+    "initial button state must batch duplicate class IDs into one storage read"
+  );
 
   const createdAt = Date.now();
   const updatedValue = {

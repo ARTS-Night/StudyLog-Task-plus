@@ -56,6 +56,7 @@
 
     addStyle();
     addMemoButtons();
+    keepButtonsBelowIvy();
     initClassPagePanel();
     insertNavSettingsLink();
     observeDynamicSections();
@@ -371,6 +372,7 @@
 
   function addMemoButtons(root = document) {
     const classLinks = [];
+    const addedClassIds = new Set();
 
     if (root.nodeType === Node.ELEMENT_NODE && root.matches(CLASS_LINK_SELECTOR)) {
       classLinks.push(root);
@@ -397,13 +399,7 @@
       button.className = BUTTON_CLASS;
       button.dataset.classId = classId;
       setButtonLabel(button, "task", "タスク");
-
-      SyncGuard.when(() => {
-        storage.get([classId], (result) => {
-          if (chrome.runtime.lastError || !result) return;
-          updateButtonState(button, result[classId]);
-        });
-      });
+      addedClassIds.add(classId);
 
       button.addEventListener("click", (event) => {
         event.preventDefault();
@@ -421,7 +417,17 @@
       parentSection.appendChild(button);
     });
 
-    keepButtonsBelowIvy();
+    if (addedClassIds.size === 0) return;
+
+    // 同じ授業が複数の日・時限にある場合も、追加された授業IDを一度に読み込む。
+    // 個々のボタンから storage.get() すると、初期表示時のIPCと正規化が重複する。
+    const classIds = Array.from(addedClassIds);
+    SyncGuard.when(() => {
+      storage.get(classIds, (result) => {
+        if (chrome.runtime.lastError || !result) return;
+        classIds.forEach((classId) => updateClassButtons(classId, result[classId]));
+      });
+    });
   }
 
   // Tree Ivy 拡張が出席グラフ (.ivy-section) を後から挿入した場合でも、
@@ -491,9 +497,10 @@
 
   function updateClassButtons(classId, rawValue) {
     const normalizedId = String(classId);
+    const tasks = normalizeEntry(rawValue, normalizedId).tasks;
     document.querySelectorAll(`.${BUTTON_CLASS}`).forEach((button) => {
       if (button.dataset.classId === normalizedId) {
-        updateButtonState(button, rawValue);
+        applyButtonTasks(button, tasks);
       }
     });
 
@@ -1071,8 +1078,7 @@
     return "不明な授業";
   }
 
-  function updateButtonState(button, rawValue) {
-    const tasks = normalizeEntry(rawValue, button.dataset.classId).tasks;
+  function applyButtonTasks(button, tasks) {
     button.dataset.tasks = JSON.stringify(tasks);
 
     const incompleteCount = tasks.filter((task) => !task.done).length;

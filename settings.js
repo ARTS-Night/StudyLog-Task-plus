@@ -22,9 +22,9 @@
     return area.QUOTA_BYTES || (mode === "local" ? 10485760 : 102400);
   }
 
-  // タスク以外の内部キー（設定フラグなど）を除外する
+  // データ契約どおり、数字の授業IDキーだけをタスクとして扱う。
   function taskEntries(items) {
-    return Object.entries(items).filter(([key]) => !key.startsWith("__"));
+    return Object.entries(items).filter(([key]) => /^\d+$/.test(key));
   }
 
   function runMutationExclusive(operation, includePending, onLockError) {
@@ -528,7 +528,6 @@
       const clean = {};
       const seenIds = new Set();
       taskEntries(data).forEach(([classId, value]) => {
-        if (!/^\d+$/.test(classId)) return;
         const entry = normalizeEntry(value);
         const tasks = entry.tasks
           .map((task) => {
