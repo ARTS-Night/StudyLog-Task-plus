@@ -14,12 +14,67 @@
       background: #f7f9fa;
     }
 
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
     h1 {
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 20px;
-      margin: 0 0 20px;
+      margin: 0;
+      flex: 1 1 auto;
+    }
+
+    #settings-search {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 38px;
+      padding: 8px 12px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #333;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 19px;
+    }
+
+    #settings-search:focus-visible {
+      outline: 3px solid rgba(76, 175, 80, 0.3);
+      outline-offset: 1px;
+    }
+
+    .settings-group {
+      margin-bottom: 26px;
+    }
+
+    .group-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #4CAF50;
+      letter-spacing: 0.05em;
+    }
+
+    .group-title::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: #d9e5da;
+    }
+
+    #search-empty {
+      color: #777;
+      font-size: 13px;
+      text-align: center;
+      padding: 28px 0;
     }
 
     .lms-icon {
@@ -34,9 +89,22 @@
       margin-bottom: 16px;
     }
 
-    section h2 {
+    section h3 {
+      display: flex;
+      align-items: center;
+      gap: 7px;
       font-size: 15px;
       margin: 0 0 10px;
+    }
+
+    /* Material Symbols（fonts.google.com/icons）のパスをインラインSVGで埋め込む。
+       外部フォント読み込みは拡張のCSPで使えないため */
+    .mi {
+      flex: 0 0 auto;
+    }
+
+    section h3 .mi {
+      color: #4CAF50;
     }
 
     section p {
@@ -88,12 +156,119 @@
       color: #555;
     }
 
+    .drive-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      border: 1px solid #e0e5e8;
+      border-radius: 8px;
+      background: #fafbfc;
+    }
+
+    .drive-card svg {
+      flex: 0 0 auto;
+    }
+
+    .drive-card-main {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    #drive-account {
+      font-size: 14px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    #drive-substatus {
+      margin-top: 2px;
+      font-size: 12px;
+      color: #777;
+    }
+
+    .drive-chip {
+      flex: 0 0 auto;
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #777;
+      background: #ececec;
+      white-space: nowrap;
+    }
+
+    .drive-chip.on {
+      color: #1e7b34;
+      background: #e2f3e5;
+    }
+
+    .drive-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 0;
+    }
+
+    #drive-sync-buttons[hidden] {
+      display: none;
+    }
+
+    .google-tasks-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      width: 100%;
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .google-tasks-option input {
+      margin-top: 3px;
+    }
+
+    #google-tasks-substatus {
+      margin: -4px 0 8px 23px;
+      font-size: 12px;
+      color: #777;
+    }
+
+    #drive-error,
+    #google-tasks-error {
+      font-size: 13px;
+      color: #d32f2f;
+      background: #fdecea;
+      border: 1px solid #f0b5b1;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     #usage b {
       color: #2196F3;
     }
 
     #import-file {
       display: none;
+    }
+
+    select {
+      padding: 6px 10px;
+      font-size: 13px;
+      color: #333;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    select:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
     }
 
     .mode-option {
@@ -117,7 +292,31 @@
     }
 
     .mode-option input {
-      margin-top: 3px;
+      margin-top: 10px;
+    }
+
+    .mode-icon-wrap {
+      display: flex;
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+    }
+
+    .mode-icon-wrap.sync {
+      color: #1a73e8;
+      background: #e8f0fe;
+    }
+
+    .mode-icon-wrap.local {
+      color: #546e7a;
+      background: #eceff1;
+    }
+
+    .mode-icon-wrap.drive {
+      background: #e6f4ea;
     }
 
     .mode-option small {
@@ -218,22 +417,25 @@
   </style>
 </head>
 <body>
-  <h1>
-    <svg class="lms-icon" viewBox="0 0 24 24" width="24" height="24" fill="#4CAF50"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"/></svg>
-    スタログ授業タスク管理 - 設定
-  </h1>
+  <div class="page-header">
+    <h1>
+      <svg class="lms-icon" viewBox="0 0 24 24" width="24" height="24" fill="#4CAF50"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"/></svg>
+      スタログ授業タスク管理 - 設定
+    </h1>
+    <button id="btn-open-tasks" class="primary"><svg class="mi" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"/></svg>タスク一覧を開く</button>
+  </div>
+
+  <input id="settings-search" type="search" placeholder="設定を検索（例：ドライブ、削除、バックアップ）" autocomplete="off" aria-label="設定を検索">
+
+  <div class="settings-group">
+  <h2 class="group-title"><svg class="mi" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/></svg>保存と共有</h2>
 
   <section>
-    <h2>専用タスク画面</h2>
-    <p>年度・授業を選んで、すべてのタスクを追加・編集・削除できます。</p>
-    <button id="btn-open-tasks" class="primary">タスク一覧を開く</button>
-  </section>
-
-  <section>
-    <h2>保存先</h2>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>保存先</h3>
     <p>タスクの保存先を選択できます。切り替えるときは、現在のタスクが新しい保存先へコピーされます。</p>
     <label class="mode-option">
       <input type="radio" name="storage-mode" value="sync">
+      <span class="mode-icon-wrap sync"><svg class="mi" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg></span>
       <span>
         <b>Google アカウントで同期</b><br>
         <small>Chrome にログインして同期をオンにしていれば、他のパソコンでも同じタスクを使えます（上限 約100KB）。</small>
@@ -249,49 +451,130 @@
     </details>
     <label class="mode-option">
       <input type="radio" name="storage-mode" value="local">
+      <span class="mode-icon-wrap local"><svg class="mi" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg></span>
       <span>
         <b>この端末のみ（ローカル保存）</b><br>
         <small>タスクをこのパソコンの中だけに保存します。他のパソコンとは共有されません（上限 約10MB）。</small>
       </span>
     </label>
+    <label class="mode-option">
+      <input type="radio" name="storage-mode" value="drive">
+      <span class="mode-icon-wrap drive"><svg viewBox="0 0 87.3 78" width="20" height="18" aria-hidden="true">
+        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#ea4335"/>
+        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+      </svg></span>
+      <span>
+        <b>Google ドライブで共有</b><br>
+        <small>この端末に保存しつつ、マイドライブの「stalog_task_plus」フォルダと自動で同期します。同じGoogleアカウントでログインした他のパソコンとタスクを共有できます（Chromeの同期設定は不要）。選択時にGoogleログインを求められます。</small>
+      </span>
+    </label>
   </section>
 
   <section>
-    <h2>ストレージ使用量</h2>
-    <p>現在の保存先の使用量です。</p>
-    <div id="usage">読み込み中...</div>
-  </section>
-
-  <section>
-    <h2>同期チェック</h2>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>同期チェック</h3>
     <p>
       各パソコンで「この端末の印を残す」を押すと、その記録が Google アカウント経由で同期されます。<br>
       別のパソコンの印がここに表示されていれば、同期は正常に動いています。このページを開いたままでも、他の端末からの更新はリアルタイムで反映されます。
     </p>
     <div id="sync-check-list" class="sync-check-list">読み込み中...</div>
-    <button id="btn-sync-check" class="primary">この端末の印を残す</button>
-    <button id="btn-sync-rename">端末名を変更</button>
+    <button id="btn-sync-check" class="primary"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>この端末の印を残す</button>
+    <button id="btn-sync-rename"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>端末名を変更</button>
   </section>
 
   <section>
-    <h2>バックアップ</h2>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M6.6 10.61 9.05 6.4h5.9l2.45 4.21-2.95 5.11H9.55L6.6 10.61zM12 2 4.5 15l3.75 6.5h7.5L19.5 15 12 2z" opacity="0"/><path d="M7.71 3.5 1.15 15l3.28 5.68 6.56-11.36L7.71 3.5zM9.87 3.5l6.56 11.36h6.56L16.43 3.5H9.87zM8.79 16.36 5.5 22.04h13.13l3.28-5.68H8.79z"/></svg>Google ドライブ連携</h3>
+    <p>
+      「Google ドライブで共有」モードのログイン管理と、手動バックアップ・復元です。<br>
+      データはマイドライブの「stalog_task_plus」フォルダ内の stalog-tasks.json に保存され、ドライブ画面からも確認できます。フォルダを消しても次の同期で作り直されます。
+    </p>
+    <div class="drive-card">
+      <svg viewBox="0 0 87.3 78" width="30" height="27" aria-hidden="true">
+        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#ea4335"/>
+        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+      </svg>
+      <div class="drive-card-main">
+        <div id="drive-account">確認しています...</div>
+        <div id="drive-substatus"></div>
+      </div>
+      <span id="drive-chip" class="drive-chip">確認中</span>
+    </div>
+    <div id="drive-error" hidden></div>
+    <div class="drive-actions">
+      <button id="btn-drive-login" class="primary"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M11 7 9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"/></svg>Googleでログイン</button>
+      <button id="btn-drive-logout" hidden><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>ログアウト</button>
+      <div id="drive-sync-buttons" hidden>
+        <label class="google-tasks-option">
+          <input id="google-tasks-sync-enabled" type="checkbox" disabled>
+          <span>タスクをGoogle Tasksにも同期する（授業ごとに自動でタスクリストを作成）</span>
+        </label>
+        <div id="google-tasks-substatus">まだ同期していません</div>
+        <div id="google-tasks-error" hidden></div>
+        <button id="btn-drive-backup"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>ドライブへバックアップ</button>
+        <button id="btn-drive-restore"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>ドライブから復元</button>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <div class="settings-group">
+  <h2 class="group-title"><svg class="mi" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z"/></svg>データの管理</h2>
+
+  <section>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>バックアップ（JSONファイル）</h3>
     <p>すべてのタスクを JSON ファイルとして保存・復元できます。</p>
-    <button id="btn-export" class="primary">エクスポート</button>
-    <button id="btn-import">インポート</button>
+    <button id="btn-export" class="primary"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>エクスポート</button>
+    <button id="btn-import"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>インポート</button>
     <input type="file" id="import-file" accept=".json,application/json">
   </section>
 
   <section>
-    <h2>データの整理</h2>
-    <p>不要になったタスクをまとめて削除して容量を確保できます。</p>
-    <button id="btn-clear-done">完了済みタスクをすべて削除</button>
-    <button id="btn-clear-all" class="danger">すべてのデータを削除</button>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/></svg>完了タスクの自動削除（この端末）</h3>
+    <p>
+      この端末で期限経過後、次にスタログか拡張画面を開いたときに削除します。完了日のない旧タスクは対象外です。<br>
+      同期保存のタスク自体は他の端末からも削除されます。
+    </p>
+    <select id="completed-retention-days" aria-label="完了タスクを自動削除するまでの日数" disabled>
+      <option value="0">自動削除しない</option>
+      <option value="1">完了から1日後</option>
+      <option value="3">完了から3日後</option>
+      <option value="7">完了から7日後</option>
+      <option value="14">完了から14日後</option>
+      <option value="30">完了から30日後</option>
+      <option value="90">完了から90日後</option>
+    </select>
   </section>
+
+  <section>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M15 16h4v2h-4zm0-8h7v2h-7zm0 4h6v2h-6zM3 18c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2V8H3v10zM14 5h-3l-1-1H6L5 5H2v2h12z"/></svg>データの整理</h3>
+    <p>不要になったタスクをまとめて削除して容量を確保できます。</p>
+    <button id="btn-clear-done"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M15 16h4v2h-4zm0-8h7v2h-7zm0 4h6v2h-6zM3 18c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2V8H3v10zM14 5h-3l-1-1H6L5 5H2v2h12z"/></svg>完了済みタスクをすべて削除</button>
+    <button id="btn-clear-all" class="danger"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12 1.41-1.41L12 12.59l2.12-2.12 1.41 1.41L13.41 14l2.12 2.12-1.41 1.41L12 15.41l-2.12 2.12-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"/></svg>すべてのデータを削除</button>
+  </section>
+
+  <section>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z"/></svg>ストレージ使用量</h3>
+    <p>現在の保存先の使用量です。</p>
+    <div id="usage">読み込み中...</div>
+  </section>
+  </div>
+
+  <p id="search-empty" hidden>検索に一致する設定はありません</p>
 
   <div id="status"></div>
   <script src="sync-guard.js"></script>
   <script src="mutation-lock.js"></script>
   <script src="task-lifecycle.js"></script>
+  <script src="google-auth.js"></script>
+  <script src="drive-sync.js"></script>
+  <script src="google-tasks-sync.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

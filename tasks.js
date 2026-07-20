@@ -25,7 +25,6 @@
   const taskSearch = document.getElementById("task-search");
   const clearTaskSearchButton = document.getElementById("btn-clear-task-search");
   const taskStatusFilter = document.getElementById("task-status-filter");
-  const retentionDaysSelect = document.getElementById("completed-retention-days");
   const refreshButton = document.getElementById("btn-refresh");
   const editDialog = document.getElementById("edit-dialog");
   const editForm = document.getElementById("edit-form");
@@ -57,8 +56,6 @@
   let catalogTabId = null;
   let catalogTabBaseline = 0;
   let catalogTabTimer = null;
-  let retentionDays = 0;
-  let retentionLoaded = false;
 
   function emptyCatalog() {
     return { updatedAt: 0, fullUpdatedAt: 0, years: {} };
@@ -108,13 +105,6 @@
     });
   }
 
-  function createTaskId() {
-    if (typeof crypto !== "undefined" && crypto.randomUUID) {
-      return crypto.randomUUID();
-    }
-    return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
-
   function createTaskDate(timestamp, label, className) {
     const normalized = TaskLifecycle.normalizeTimestamp(timestamp);
     if (!normalized) return null;
@@ -144,45 +134,9 @@
     return main;
   }
 
-  function normalizeTaskList(value, classId) {
-    const source = Array.isArray(value) ? value : [];
-    const ids = new Set();
-
-    return source
-      .filter((task) => task && typeof task.text === "string")
-      .map((task, index) => {
-        let id = typeof task.id === "string" && task.id !== ""
-          ? task.id
-          : `legacy-${classId}-${index}`;
-        if (ids.has(id)) id = `${id}-${index}`;
-        ids.add(id);
-        return TaskLifecycle.copyTimestamps(
-          task,
-          { id, text: task.text, done: task.done === true }
-        );
-      });
-  }
-
+  // 保存値の正規化（旧形式互換を含む）は task-lifecycle.js の共通実装を使う
   function normalizeEntry(value, classId) {
-    if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
-      return {
-        subject: typeof value.subject === "string" ? value.subject.trim() : "",
-        tasks: normalizeTaskList(value.tasks, classId)
-      };
-    }
-
-    if (Array.isArray(value)) {
-      return { subject: "", tasks: normalizeTaskList(value, classId) };
-    }
-
-    if (typeof value === "string" && value.trim() !== "") {
-      return {
-        subject: "",
-        tasks: [{ id: `legacy-${classId}-0`, text: value, done: false }]
-      };
-    }
-
-    return { subject: "", tasks: [] };
+    return TaskLifecycle.normalizeEntry(value, classId);
   }
 
   function normalizeCatalog(value) {
@@ -284,7 +238,8 @@
 
   async function getCurrentTaskStorage() {
     const result = await storageGet(chrome.storage.local, [MODE_KEY]);
-    const latestMode = result[MODE_KEY] === "local" ? "local" : "sync";
+    // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
+    const latestMode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
     if (latestMode !== mode) {
       mode = latestMode;
       storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
@@ -410,7 +365,6 @@
     taskSearch.disabled = !ready;
     taskStatusFilter.disabled = !ready;
     clearTaskSearchButton.disabled = !ready || !hasActiveTaskFilter();
-    retentionDaysSelect.disabled = !retentionLoaded || busy;
   }
 
   function setBusy(value) {
@@ -508,11 +462,16 @@
     updateControls();
   }
 
-  function makeButton(label, className, handler) {
+  function createIcon(name, size = 13) {
+    return TaskLifecycle.createIcon(name, size, "mi");
+  }
+
+  function makeButton(label, className, handler, iconName) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = className;
-    button.textContent = label;
+    if (iconName) button.appendChild(createIcon(iconName));
+    button.appendChild(document.createTextNode(label));
     button.dataset.write = "";
     button.disabled = !ready || busy;
     button.addEventListener("click", handler);
@@ -659,7 +618,7 @@
       if (!ready) return;
       const empty = document.createElement("div");
       empty.className = "empty-state";
-      empty.textContent = "タスクはまだありません。上のフォームから追加できます。";
+      empty.textContent = "タスクはまだありません。「＋ 新しいタスクを追加」から追加できます。";
       taskGroups.appendChild(empty);
       return;
     }
@@ -740,8 +699,8 @@
 
       const actions = document.createElement("div");
       actions.className = "task-actions";
-      const editButton = makeButton("編集", "button small", () => openEditDialog(entry, task, editButton));
-      const deleteButton = makeButton("削除", "button small danger", () => deleteTask(entry, task));
+      const editButton = makeButton("編集", "button small", () => openEditDialog(entry, task, editButton), "edit");
+      const deleteButton = makeButton("削除", "button small danger", () => deleteTask(entry, task), "delete");
       actions.append(editButton, deleteButton);
       item.append(checkbox, taskMain, actions);
       list.appendChild(item);
@@ -825,7 +784,7 @@
     let saved = false;
     try {
       const item = {
-        id: createTaskId(),
+        id: TaskLifecycle.createTaskId(),
         classId: selected.classId,
         subject: selected.subject,
         text,
@@ -955,8 +914,8 @@
     }
 
     const saved = await mutateClass(selected.classId, selected.subject, (tasks) => {
-      let id = createTaskId();
-      while (tasks.some((task) => task.id === id)) id = createTaskId();
+      let id = TaskLifecycle.createTaskId();
+      while (tasks.some((task) => task.id === id)) id = TaskLifecycle.createTaskId();
       tasks.push({ id, text, done: false, createdAt });
       return tasks;
     });
@@ -974,31 +933,6 @@
       tasks[index] = TaskLifecycle.setDone(tasks[index], desiredDone, changedAt);
       return tasks;
     });
-  }
-
-  async function saveRetentionSetting() {
-    if (!retentionLoaded || busy) return;
-    const previous = retentionDays;
-    const next = TaskLifecycle.normalizeRetentionDays(retentionDaysSelect.value);
-    retentionDays = next;
-    retentionDaysSelect.value = String(next);
-    setBusy(true);
-    try {
-      // 自動整理と同じ共通ロックへ入れ、OFF保存の完了後に古い設定の整理が走らないようにする。
-      await TaskMutationLock.request(() =>
-        storageSet(chrome.storage.local, { [TaskLifecycle.RETENTION_DAYS_KEY]: next })
-      );
-    } catch (error) {
-      retentionDays = previous;
-      retentionDaysSelect.value = String(previous);
-      showStatus(makeError("自動削除の設定を保存できませんでした", error).message, true);
-      finishBusy();
-      return;
-    }
-    showStatus(next > 0
-      ? `完了から${next}日後に自動削除します（次回利用時から適用）`
-      : "完了タスクの自動削除をオフにしました", false);
-    finishBusy();
   }
 
   function openEditDialog(entry, task, returnFocus) {
@@ -1153,19 +1087,19 @@
   }
 
   function onStorageChanged(changes, areaName) {
-    if (areaName === "local" && changes[TaskLifecycle.RETENTION_DAYS_KEY]) {
-      const nextRetentionDays = TaskLifecycle.normalizeRetentionDays(
-        changes[TaskLifecycle.RETENTION_DAYS_KEY].newValue
-      );
-      if (nextRetentionDays !== retentionDays) {
-        retentionDays = nextRetentionDays;
-        retentionDaysSelect.value = String(retentionDays);
-        updateControls();
-      }
+    // driveモードの自動同期の結果を通知する（同期はService Workerが行う）
+    if (areaName === "local" && changes["__drive_synced_at__"]
+      && typeof changes["__drive_synced_at__"].newValue === "number") {
+      const dir = changes["__drive_sync_dir__"] ? String(changes["__drive_sync_dir__"].newValue) : "";
+      showStatus(dir.startsWith("pull") ? "他の端末の変更を取り込みました" : "Googleドライブへ同期しました", false);
+    }
+    if (areaName === "local" && changes["__drive_last_error__"] && changes["__drive_last_error__"].newValue) {
+      const lastError = changes["__drive_last_error__"].newValue;
+      showStatus(`Googleドライブ同期エラー: ${lastError.message || "不明なエラー"}`, true);
     }
 
     if (areaName === "local" && changes[MODE_KEY]) {
-      const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
+      const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== mode) {
         mode = nextMode;
         storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
@@ -1229,7 +1163,6 @@
     renderTasks();
     taskSearch.focus();
   });
-  retentionDaysSelect.addEventListener("change", () => void saveRetentionSetting());
   addForm.addEventListener("submit", addTask);
   refreshButton.addEventListener("click", () => {
     if (pendingAdds.length > 0) {
@@ -1261,7 +1194,8 @@
 
   storageGet(chrome.storage.local, null)
     .then((result) => {
-      mode = result[MODE_KEY] === "local" ? "local" : "sync";
+      // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
+      mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
       storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
       watchedArea = mode;
       fullCatalog = normalizeCatalog(result[CATALOG_KEY]);
@@ -1269,9 +1203,6 @@
       catalog = combineCatalogs(fullCatalog, partialCatalog);
       pendingAdds = pendingAddsFromStorage(result);
       pendingStateUnknown = false;
-      retentionDays = TaskLifecycle.normalizeRetentionDays(result[TaskLifecycle.RETENTION_DAYS_KEY]);
-      retentionDaysSelect.value = String(retentionDays);
-      retentionLoaded = true;
       rebuildCatalogIndex();
       renderCatalogControls(false);
       renderTasks();

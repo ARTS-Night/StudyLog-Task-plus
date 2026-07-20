@@ -5,8 +5,18 @@
   "version": "1.2.0",
   "description": "スタログの授業ごとにタスクを保存し、年度別の専用画面で管理します。",
   "permissions": [
-    "storage"
+    "storage",
+    "identity",
+    "alarms"
   ],
+  "oauth2": {
+    "client_id": "279232239122-n0o7j668rhsp7lhir90016h51qi58jfi.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/tasks",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "すべてのタスクを表示"

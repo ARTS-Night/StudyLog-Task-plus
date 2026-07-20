@@ -3,9 +3,11 @@
   const POPUP_ID = "lms-memo-popup-window";
   const PREVIEW_ID = "lms-memo-preview-popup";
   const EMBED_ID = "lms-task-embed-panel";
+  const HOME_WIDGET_ID = "lms-home-task-widget";
   const TOAST_ID = "lms-memo-toast";
   const BUTTON_CLASS = "lms-memo-btn";
   const HAS_TEXT_CLASS = "lms-memo-has-text";
+  const ALL_DONE_CLASS = "lms-memo-all-done";
   // 保存先モード（設定ページで切り替え）: "sync" = Google アカウントで同期 / "local" = この端末のみ
   const MODE_KEY = "__storage_mode__";
   const CLASS_LOCK_PREFIX = "stalog-task-class:";
@@ -19,7 +21,10 @@
           reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
           return;
         }
-        resolve(result[MODE_KEY] === "local" ? chrome.storage.local : chrome.storage.sync);
+        // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
+        resolve(TaskLifecycle.physicalStorageMode(result[MODE_KEY]) === "local"
+          ? chrome.storage.local
+          : chrome.storage.sync);
       });
     });
   }
@@ -33,20 +38,10 @@
     }));
   }
 
-  // Material Symbols (https://fonts.google.com/icons) の SVG パス。
-  // 外部フォント読み込みはページの CSP に阻まれる可能性があるためインライン SVG で埋め込む。
-  const ICON_PATHS = {
-    task: "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z",
-    check_circle: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
-    edit: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
-    delete: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
-    add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
-    close: "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-  };
-
   // 初回同期ガード本体は sync-guard.js（content.js より先に読み込まれる）
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
-    const mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
+    const mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
     storageMode = mode;
     if (mode === "local") {
       storage = chrome.storage.local;
@@ -57,6 +52,7 @@
     addStyle();
     addMemoButtons();
     keepButtonsBelowIvy();
+    insertHomeTaskWidget();
     initClassPagePanel();
     insertNavSettingsLink();
     observeDynamicSections();
@@ -79,35 +75,39 @@
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && changes[MODE_KEY]) {
-      const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
+      const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== storageMode) {
         window.location.reload();
         return;
       }
     }
 
+    // driveモードの自動同期の結果をトーストで通知する（iframe内での二重表示を避けて最上位のみ）
+    if (areaName === "local" && (!window.top || window.top === window)) {
+      if (changes["__drive_synced_at__"] && typeof changes["__drive_synced_at__"].newValue === "number") {
+        const dir = changes["__drive_sync_dir__"] ? String(changes["__drive_sync_dir__"].newValue) : "";
+        showToast(dir.startsWith("pull") ? "他の端末の変更を取り込みました" : "Googleドライブへ同期しました");
+      }
+      if (changes["__drive_last_error__"] && changes["__drive_last_error__"].newValue) {
+        const lastError = changes["__drive_last_error__"].newValue;
+        showToast(`Googleドライブ同期エラー: ${lastError.message || "不明なエラー"}`);
+      }
+    }
+
     // 同じ授業が複数の日・時限に表示されていても、タスクだけを全箇所へ即時反映する。
     // 初回同期の確認前に届いた変更は、SyncGuard.when() 内の初期読み込みへ任せる。
     if (!SyncGuard.isReady() || areaName !== storageMode) return;
+    let tasksChanged = false;
     Object.entries(changes).forEach(([classId, change]) => {
       if (!/^\d+$/.test(classId)) return;
+      tasksChanged = true;
       updateClassButtons(classId, change.newValue);
     });
+    if (tasksChanged) refreshHomeTaskWidget();
   });
 
   function createIcon(name, size = 16) {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("width", size);
-    svg.setAttribute("height", size);
-    svg.setAttribute("fill", "currentColor");
-    svg.classList.add("lms-icon");
-
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", ICON_PATHS[name]);
-    svg.appendChild(path);
-
-    return svg;
+    return TaskLifecycle.createIcon(name, size, "lms-icon");
   }
 
   function addStyle() {
@@ -128,22 +128,67 @@
         gap: 4px;
         width: 100%;
         margin-top: 5px;
-        padding: 3px 5px;
+        /* 枠線1px込みで従来(枠なし+3px)と同じ高さになるよう2pxにする。
+           状態(なし/あり/完了)はすべて同じ1px枠なので高さは変わらない */
+        padding: 2px 5px;
         font-size: 11px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 3px;
+        font-weight: 600;
+        color: #2e7d32;
+        background-color: #ffffff;
+        border: 1px solid #a5d6a7;
+        border-radius: 5px;
         cursor: pointer;
         text-align: center;
+        transition: background-color 0.15s;
       }
 
       .lms-memo-btn:hover {
-        background-color: #45a049;
+        background-color: #f1f8e9;
       }
 
+      /* カレンダーのセル(td)は position:relative。ウィンドウを狭めて授業名が
+         折り返してもボタンの位置が上下にずれないよう、セルの下端に張り付ける。
+         ボタンぶんの余白は td 側の padding-bottom で確保する。
+         スタログ本体の .top-timetable-table-td が padding: 0 !important を
+         持つため、こちらも !important で上書きする（通常の詳細度勝負では負ける）。 */
+      td:has(.div-class-name .lms-memo-btn) {
+        position: relative;
+        padding-bottom: 30px !important;
+      }
+
+      /* ponytail: 同じセルに複数授業があると下端で重なる。実害が出たらJSで積み上げる */
+      td .div-class-name .lms-memo-btn {
+        position: absolute;
+        /* .div-class-name は左のコマ番号帯(20px)を避けるため padding: 7px 7px 7px 27px
+           という左右非対称パディングを持つ。td全体の中央(50%)だと実際の文字（教室名など）
+           の中心より10px左に寄って見えるため、その差分(27px-7px)/2=10pxだけ右へ補正する。 */
+        left: calc(50% + 10px);
+        bottom: 4px;
+        transform: translateX(-50%);
+        width: 88%;
+        max-width: 220px;
+        margin-top: 0;
+      }
+
+      /* 未完了タスクあり: 青の塗りで注意を引く */
       .lms-memo-has-text {
-        background-color: #2196F3 !important;
+        color: #ffffff !important;
+        background-color: #1e88e5 !important;
+        border-color: #1e88e5 !important;
+      }
+
+      .lms-memo-has-text:hover {
+        background-color: #1976d2 !important;
+      }
+
+      /* すべて完了: 緑の塗りで達成感を示す */
+      .lms-memo-all-done {
+        background-color: #43a047 !important;
+        border-color: #43a047 !important;
+      }
+
+      .lms-memo-all-done:hover {
+        background-color: #388e3c !important;
       }
 
       .lms-memo-popup {
@@ -151,17 +196,17 @@
         top: 90px;
         left: 50%;
         transform: translateX(-50%);
-        width: min(400px, 92vw);
-        max-height: min(70vh, 560px);
+        width: min(480px, 94vw);
+        max-height: min(74vh, 620px);
         background: white;
         border: 1px solid #ddd;
-        padding: 16px;
+        padding: 20px;
         z-index: 10000;
         box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
         border-radius: 8px;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 12px;
         box-sizing: border-box;
         overflow: hidden;
       }
@@ -171,7 +216,7 @@
         align-items: center;
         gap: 6px;
         margin: 0;
-        font-size: 15px;
+        font-size: 17px;
         color: #333;
       }
 
@@ -195,18 +240,20 @@
       .lms-task-item {
         display: flex;
         align-items: flex-start;
-        gap: 8px;
-        padding: 6px 2px;
+        gap: 10px;
+        padding: 9px 3px;
         border-bottom: 1px solid #eee;
       }
 
       .lms-task-item input[type="checkbox"] {
         margin-top: 3px;
         flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
       }
 
       .lms-task-text {
-        font-size: 13px;
+        font-size: 14px;
         white-space: pre-wrap;
         word-break: break-word;
       }
@@ -216,14 +263,14 @@
         min-width: 0;
         flex: 1;
         flex-direction: column;
-        gap: 1px;
+        gap: 2px;
       }
 
       .lms-task-created,
       .lms-task-completed,
       .lms-preview-task-created {
-        font-size: 11px;
-        line-height: 1.35;
+        font-size: 12px;
+        line-height: 1.4;
         text-decoration: none;
       }
 
@@ -263,29 +310,62 @@
         color: #333;
       }
 
+      .lms-task-subject {
+        color: #52616b;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      #${HOME_WIDGET_ID} .lms-home-task-tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      #${HOME_WIDGET_ID} .lms-home-task-tab {
+        padding: 5px 12px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        background: #fff;
+        cursor: pointer;
+      }
+
+      #${HOME_WIDGET_ID} .lms-home-task-tab.active {
+        color: #fff;
+        background: #1e88e5;
+        border-color: #1e88e5;
+      }
+
+      #${HOME_WIDGET_ID} .lms-task-list {
+        max-height: 360px;
+      }
+
       .lms-task-empty {
         color: #999;
-        font-size: 12px;
-        padding: 8px 2px;
+        font-size: 13px;
+        padding: 10px 3px;
       }
 
       .lms-task-form textarea {
         width: 100%;
-        min-height: 60px;
+        min-height: 72px;
         box-sizing: border-box;
-        padding: 5px;
-        font-size: 12px;
+        padding: 8px;
+        font-size: 13px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
         resize: vertical;
       }
 
       .lms-task-form-buttons {
-        margin-top: 6px;
+        margin-top: 8px;
         text-align: right;
       }
 
       .lms-task-form-buttons button {
-        margin-left: 5px;
-        padding: 4px 10px;
+        margin-left: 6px;
+        padding: 6px 14px;
+        font-size: 13px;
         cursor: pointer;
       }
 
@@ -293,7 +373,7 @@
         margin-top: 0;
         display: flex;
         justify-content: flex-end;
-        gap: 5px;
+        gap: 6px;
         flex: 0 0 auto;
       }
 
@@ -301,7 +381,8 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 4px 10px;
+        padding: 6px 14px;
+        font-size: 13px;
         cursor: pointer;
         border-radius: 4px;
         border: 1px solid #ccc;
@@ -357,29 +438,55 @@
 
       .lms-memo-preview-popup {
         position: fixed;
-        max-width: 260px;
-        max-height: 200px;
+        max-width: 280px;
+        max-height: 220px;
         overflow: auto;
-        background: #fffde7;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        padding: 8px 10px;
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 10px 12px;
         font-size: 12px;
         color: #333;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
         z-index: 10001;
         pointer-events: none;
       }
 
+      .lms-preview-title {
+        margin: 0 0 7px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #1e88e5;
+      }
+
       .lms-preview-task-list {
         margin: 0;
-        padding-left: 16px;
+        padding: 0;
+        list-style: none;
       }
 
       .lms-preview-task-list li {
-        margin-bottom: 4px;
+        position: relative;
+        margin-bottom: 7px;
+        padding-left: 19px;
         white-space: pre-wrap;
         word-break: break-word;
+      }
+
+      .lms-preview-task-list li:last-child {
+        margin-bottom: 0;
+      }
+
+      /* 未完了チェックボックス風のマーカー */
+      .lms-preview-task-list li::before {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 0;
+        width: 10px;
+        height: 10px;
+        border: 2px solid #9e9e9e;
+        border-radius: 3px;
       }
 
       .lms-preview-task-created {
@@ -487,6 +594,7 @@
       }
       insertNavSettingsLink();
       keepButtonsBelowIvy();
+      insertHomeTaskWidget();
     });
 
     observer.observe(document.body, {
@@ -538,52 +646,259 @@
     }
   }
 
-  // 保存形式: { subject: string, tasks: [{id, text, done, createdAt?, completedAt?}] }
-  // 旧形式（タスク配列のみ、またはメモ文字列）も読み込めるように変換する。
+  // 保存値の正規化（旧形式互換を含む）は task-lifecycle.js の共通実装を使う
   function normalizeEntry(value, classId) {
-    if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
-      return {
-        subject: typeof value.subject === "string" ? value.subject : "",
-        tasks: normalizeTasks(value.tasks, classId)
-      };
-    }
-
-    return { subject: "", tasks: normalizeTasks(value, classId) };
+    return TaskLifecycle.normalizeEntry(value, classId);
   }
 
-  function normalizeTasks(value, classId) {
-    if (Array.isArray(value)) {
-      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
-      const ids = new Set();
-      return value
-        .filter((task) => task && typeof task.text === "string")
-        .map((task, index) => {
-          let id = typeof task.id === "string" && task.id !== ""
-            ? task.id
-            : `legacy-${stableClassId}-${index}`;
-          if (ids.has(id)) id = `${id}-${index}`;
-          ids.add(id);
-          return TaskLifecycle.copyTimestamps(task, {
-            id,
-            text: task.text,
-            done: task.done === true
+  // LMSホームのお知らせ直下へ、全授業のタスクを横断表示する。
+  function insertHomeTaskWidget() {
+    if (location.pathname !== "/lms/") return false;
+    if (document.getElementById(HOME_WIDGET_ID)) return true;
+
+    const column = document.getElementById("div-top-right");
+    const news = document.getElementById("div-news");
+    if (!column || !news || news.parentElement !== column) return false;
+
+    const panel = document.createElement("div");
+    panel.id = HOME_WIDGET_ID;
+    panel.className = "panel panel-default sp-margin-bottom-none sp-border-bottom-none";
+
+    const heading = document.createElement("div");
+    heading.className = "panel-heading cf";
+    const mark = document.createElement("i");
+    mark.className = "mark";
+    heading.append(mark, createIcon("task", 15), document.createTextNode(" タスク一覧"));
+
+    const body = document.createElement("div");
+    body.className = "panel-body lms-task-body";
+    const tabs = document.createElement("div");
+    tabs.className = "lms-home-task-tabs";
+    const incompleteTab = createTab("未完了", false);
+    const doneTab = createTab("完了", true);
+    tabs.append(incompleteTab, doneTab);
+
+    const list = document.createElement("ul");
+    list.className = "lms-task-list";
+    const waiting = document.createElement("li");
+    waiting.className = "lms-task-empty";
+    waiting.textContent = "同期データを確認中です…（最大20秒ほどかかります）";
+    list.appendChild(waiting);
+
+    const form = document.createElement("div");
+    form.className = "lms-task-form";
+    form.hidden = true;
+    const textarea = document.createElement("textarea");
+    textarea.placeholder = "タスクの内容を入力...";
+    const formButtons = document.createElement("div");
+    formButtons.className = "lms-task-form-buttons";
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.textContent = "キャンセル";
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "lms-memo-save-btn";
+    saveButton.textContent = "保存";
+    formButtons.append(cancelButton, saveButton);
+    form.append(textarea, formButtons);
+    body.append(tabs, list, form);
+    panel.append(heading, body);
+    column.insertBefore(panel, news.nextSibling);
+
+    let allTasks = [];
+    let showDone = false;
+    let editing = null;
+
+    function createTab(label, done) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `lms-home-task-tab${done ? "" : " active"}`;
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        showDone = done;
+        incompleteTab.classList.toggle("active", !done);
+        doneTab.classList.toggle("active", done);
+        closeForm();
+        render();
+      });
+      return button;
+    }
+
+    function load() {
+      if (!SyncGuard.isReady()) return;
+      storage.get(null, (result) => {
+        if (chrome.runtime.lastError || !result) {
+          showLoadError();
+          return;
+        }
+        let order = 0;
+        allTasks = [];
+        Object.entries(result).forEach(([classId, value]) => {
+          if (!/^\d+$/.test(classId) || classId.startsWith("__")) return;
+          const entry = normalizeEntry(value, classId);
+          entry.tasks.forEach((task) => {
+            allTasks.push({
+              classId,
+              subject: entry.subject || "不明な授業",
+              task,
+              createdAt: TaskLifecycle.normalizeTimestamp(task.createdAt),
+              order: order++
+            });
           });
         });
+        allTasks.sort((a, b) => {
+          if (a.createdAt && b.createdAt) return a.createdAt - b.createdAt || a.order - b.order;
+          if (a.createdAt) return -1;
+          if (b.createdAt) return 1;
+          return a.order - b.order;
+        });
+        render();
+      });
     }
 
-    if (typeof value === "string" && value.trim() !== "") {
-      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
-      return [{ id: `legacy-${stableClassId}-0`, text: value, done: false }];
+    function showLoadError() {
+      list.innerHTML = "";
+      const failed = document.createElement("li");
+      failed.className = "lms-task-empty";
+      failed.textContent = `タスクを読み込めませんでした${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`;
+      list.appendChild(failed);
     }
 
-    return [];
+    function render() {
+      list.innerHTML = "";
+      const visible = allTasks.filter((item) => item.task.done === showDone);
+      if (visible.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "lms-task-empty";
+        empty.textContent = allTasks.length === 0
+          ? "タスクはまだありません。"
+          : `${showDone ? "完了" : "未完了"}のタスクはありません。`;
+        list.appendChild(empty);
+        return;
+      }
+
+      visible.forEach((entry) => {
+        const item = document.createElement("li");
+        item.className = `lms-task-item${entry.task.done ? " done" : ""}`;
+        item.dataset.classId = entry.classId;
+        item.dataset.taskId = entry.task.id;
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = entry.task.done;
+        checkbox.setAttribute("aria-label", `${entry.task.text}を${entry.task.done ? "未完了に戻す" : "完了にする"}`);
+        checkbox.addEventListener("change", () => {
+          checkbox.disabled = true;
+          mutateTask(entry.classId, entry.task.id, {
+            type: "set-done",
+            done: checkbox.checked,
+            changedAt: Date.now()
+          });
+        });
+
+        const content = document.createElement("div");
+        content.className = "lms-task-content";
+        const subject = document.createElement("span");
+        subject.className = "lms-task-subject";
+        subject.textContent = entry.subject;
+        const text = document.createElement("span");
+        text.className = "lms-task-text";
+        text.textContent = entry.task.text;
+        content.append(subject, text);
+        const date = createTaskDateElement(
+          showDone ? entry.task.completedAt : entry.task.createdAt,
+          showDone ? "完了" : "追加",
+          showDone ? "lms-task-completed" : "lms-task-created"
+        );
+        if (date) content.appendChild(date);
+
+        const actions = document.createElement("div");
+        actions.className = "lms-task-actions";
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.title = "編集";
+        editButton.appendChild(createIcon("edit", 15));
+        editButton.addEventListener("click", () => openForm(entry));
+        actions.appendChild(editButton);
+        item.append(checkbox, content, actions);
+        list.appendChild(item);
+      });
+    }
+
+    function openForm(entry) {
+      editing = { classId: entry.classId, taskId: entry.task.id };
+      textarea.value = entry.task.text;
+      form.hidden = false;
+      textarea.focus();
+    }
+
+    function closeForm() {
+      editing = null;
+      textarea.value = "";
+      form.hidden = true;
+    }
+
+    function mutateTask(classId, taskId, operation) {
+      const fail = (message, releaseMutation) => {
+        releaseMutation();
+        showToast(`タスクを保存できませんでした: ${message}`);
+        load();
+      };
+      runClassMutation(classId, (mutationStorage, releaseMutation) => {
+        mutationStorage.get([classId], (result) => {
+          if (chrome.runtime.lastError || !result) {
+            const message = chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存内容を読み込めませんでした";
+            fail(message, releaseMutation);
+            return;
+          }
+          const latest = normalizeEntry(result[classId], classId);
+          const index = latest.tasks.findIndex((task) => task.id === taskId);
+          if (index < 0) {
+            fail("対象のタスクが見つかりませんでした", releaseMutation);
+            return;
+          }
+          const nextTasks = latest.tasks.slice();
+          const current = nextTasks[index];
+          nextTasks[index] = operation.type === "set-done"
+            ? TaskLifecycle.setDone(current, operation.done, operation.changedAt)
+            : { ...current, text: operation.text };
+          mutationStorage.set({ [classId]: { subject: latest.subject, tasks: nextTasks } }, () => {
+            const error = chrome.runtime.lastError;
+            if (error) {
+              fail(error.message, releaseMutation);
+              return;
+            }
+            releaseMutation();
+            showSavedToast(mutationStorage);
+            load();
+          });
+        });
+      }).catch((error) => {
+        showToast(`タスクを保存できませんでした: ${error.message}`);
+        load();
+      });
+    }
+
+    cancelButton.addEventListener("click", closeForm);
+    saveButton.addEventListener("click", () => {
+      const text = textarea.value.trim();
+      if (!editing || text === "") {
+        closeForm();
+        return;
+      }
+      const target = editing;
+      closeForm();
+      mutateTask(target.classId, target.taskId, { type: "edit", text });
+    });
+
+    panel.refreshTasks = load;
+    SyncGuard.when(load);
+    return true;
   }
 
-  function createTaskId() {
-    if (typeof crypto !== "undefined" && crypto.randomUUID) {
-      return crypto.randomUUID();
-    }
-    return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  function refreshHomeTaskWidget() {
+    const widget = document.getElementById(HOME_WIDGET_ID);
+    if (widget && typeof widget.refreshTasks === "function") widget.refreshTasks();
   }
 
   function createTaskDateElement(timestampValue, label, className) {
@@ -924,7 +1239,7 @@
           changedTask = target;
         }
       } else {
-        changedTask = { id: createTaskId(), text, done: false, createdAt: Date.now() };
+        changedTask = { id: TaskLifecycle.createTaskId(), text, done: false, createdAt: Date.now() };
         tasks.push(changedTask);
       }
 
@@ -1110,17 +1425,20 @@
 
     if (incompleteCount > 0) {
       button.classList.add(HAS_TEXT_CLASS);
+      button.classList.remove(ALL_DONE_CLASS);
       setButtonLabel(button, "task", `タスク (${incompleteCount})`);
       return;
     }
 
     if (tasks.length > 0) {
       button.classList.add(HAS_TEXT_CLASS);
+      button.classList.add(ALL_DONE_CLASS);
       setButtonLabel(button, "check_circle", `完了 (${tasks.length})`);
       return;
     }
 
     button.classList.remove(HAS_TEXT_CLASS);
+    button.classList.remove(ALL_DONE_CLASS);
     setButtonLabel(button, "task", "タスク");
   }
 
@@ -1142,6 +1460,11 @@
     preview.className = "lms-memo-preview-popup";
     preview.dataset.classId = button.dataset.classId || "";
     preview.sourceButton = button;
+
+    const title = document.createElement("p");
+    title.className = "lms-preview-title";
+    title.textContent = `未完了 ${incompleteTasks.length}件`;
+    preview.appendChild(title);
 
     const list = document.createElement("ul");
     list.className = "lms-preview-task-list";

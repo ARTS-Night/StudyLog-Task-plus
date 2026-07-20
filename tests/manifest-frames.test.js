@@ -54,10 +54,16 @@ assert.match(
   /<select id="task-status-filter"[^>]*>[\s\S]*value="active">未完了[\s\S]*value="done">完了/,
   "専用画面は完了状態の絞り込みを持つ"
 );
+const settingsHtml = fs.readFileSync(path.join(__dirname, "..", "settings.html"), "utf8");
 assert.match(
-  tasksHtml,
+  settingsHtml,
   /<select id="completed-retention-days"[^>]*>[\s\S]*value="0">自動削除しない[\s\S]*value="90">完了から90日後/,
-  "専用画面は既定OFFの完了後自動削除オプションを持つ"
+  "設定ページは既定OFFの完了後自動削除オプションを持つ"
+);
+assert.doesNotMatch(
+  tasksHtml,
+  /completed-retention-days/,
+  "自動削除設定は設定ページへ集約し、専用画面には置かない"
 );
 
 const catalogEntries = scripts.filter((entry) =>

@@ -106,7 +106,6 @@ const elementTags = {
   "task-search": "input",
   "btn-clear-task-search": "button",
   "task-status-filter": "select",
-  "completed-retention-days": "select",
   "btn-refresh": "button",
   "edit-dialog": "dialog",
   "edit-form": "form",
@@ -118,13 +117,18 @@ const elements = new Map(
   Object.entries(elementTags).map(([id, tag]) => [id, new FakeElement(tag, id)])
 );
 elements.get("task-status-filter").value = "all";
-elements.get("completed-retention-days").value = "0";
 const document = {
   getElementById(id) {
     return elements.get(id) || null;
   },
   createElement(tagName) {
     return new FakeElement(tagName);
+  },
+  createElementNS(namespace, tagName) {
+    return new FakeElement(tagName);
+  },
+  createTextNode(text) {
+    return { nodeType: 3, textContent: String(text), dataset: {}, children: [] };
   }
 };
 
@@ -470,23 +474,6 @@ async function main() {
   assert.equal(syncArea._data["100"].tasks.length, syncTaskCountBeforeModeRace);
   assert.equal(localArea._data["100"].tasks[0].text, "保存先切替直後の追加");
   assert.ok(Number.isFinite(localArea._data["100"].tasks[0].createdAt));
-
-  localArea._data["200"] = {
-    subject: "次回整理",
-    tasks: [{
-      id: "expired-after-setting",
-      text: "設定変更直後には消さない",
-      done: true,
-      completedAt: Date.now() - 8 * 24 * 60 * 60 * 1000
-    }]
-  };
-  const mutationLocksBeforeRetentionSave = taskMutationLockRequests;
-  elements.get("completed-retention-days").value = "7";
-  elements.get("completed-retention-days").listeners.get("change")[0]();
-  await settle(30);
-  assert.equal(localArea._data.__completed_task_retention_days__, 7, "retention option is saved locally");
-  assert.equal(taskMutationLockRequests, mutationLocksBeforeRetentionSave + 1, "retention setting is serialized with cleanup");
-  assert.ok(localArea._data["200"], "changing retention does not immediately delete existing completed tasks");
 
   const readyUnload = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined };
   windowListeners.get("beforeunload")[0](readyUnload);

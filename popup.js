@@ -9,13 +9,6 @@
   let activeMutations = 0;
   let refreshAfterMutation = false;
 
-  const SVG_NS = "http://www.w3.org/2000/svg";
-  const ICON_PATHS = {
-    check_circle: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
-    radio_unchecked: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z",
-    book: "M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM9 4h2v5l-1-.75L9 9V4z"
-  };
-
   document.getElementById("btn-settings").addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
   });
@@ -60,7 +53,10 @@
           reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
           return;
         }
-        resolve(result[MODE_KEY] === "local" ? chrome.storage.local : chrome.storage.sync);
+        // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
+        resolve(TaskLifecycle.physicalStorageMode(result[MODE_KEY]) === "local"
+          ? chrome.storage.local
+          : chrome.storage.sync);
       });
     });
   }
@@ -83,61 +79,12 @@
   }
 
   function createIcon(name, size, color) {
-    const svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("width", size);
-    svg.setAttribute("height", size);
-    svg.setAttribute("fill", color || "currentColor");
-    svg.classList.add("lms-icon");
-
-    const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", ICON_PATHS[name]);
-    svg.appendChild(path);
-
-    return svg;
+    return TaskLifecycle.createIcon(name, size, "lms-icon", color);
   }
 
-  function normalizeTasks(value, classId) {
-    if (Array.isArray(value)) {
-      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
-      const ids = new Set();
-      return value
-        .filter((task) => task && typeof task.text === "string")
-        .map((task, index) => {
-          const baseId = typeof task.id === "string" && task.id !== ""
-            ? task.id
-            : `legacy-${stableClassId}-${index}`;
-          let id = baseId;
-          let suffix = index;
-          while (ids.has(id)) {
-            id = `${baseId}-${suffix}`;
-            suffix += 1;
-          }
-          ids.add(id);
-          return TaskLifecycle.copyTimestamps(
-            task,
-            { id, text: task.text, done: task.done === true }
-          );
-        });
-    }
-
-    if (typeof value === "string" && value.trim() !== "") {
-      const stableClassId = /^\d+$/.test(String(classId || "")) ? String(classId) : "unknown";
-      return [{ id: `legacy-${stableClassId}-0`, text: value, done: false }];
-    }
-
-    return [];
-  }
-
+  // 保存値の正規化（旧形式互換を含む）は task-lifecycle.js の共通実装を使う
   function normalizeEntry(value, classId) {
-    if (value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.tasks)) {
-      return {
-        subject: typeof value.subject === "string" ? value.subject : "",
-        tasks: normalizeTasks(value.tasks, classId)
-      };
-    }
-
-    return { subject: "", tasks: normalizeTasks(value, classId) };
+    return TaskLifecycle.normalizeEntry(value, classId);
   }
 
   function createTaskMain(task) {
@@ -364,8 +311,19 @@
   }
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
+    // driveモードの自動同期の結果を通知する（同期はService Workerが行う）
+    if (areaName === "local" && changes["__drive_synced_at__"]
+      && typeof changes["__drive_synced_at__"].newValue === "number") {
+      const dir = changes["__drive_sync_dir__"] ? String(changes["__drive_sync_dir__"].newValue) : "";
+      showStatus(dir.startsWith("pull") ? "他の端末の変更を取り込みました" : "Googleドライブへ同期しました");
+    }
+    if (areaName === "local" && changes["__drive_last_error__"] && changes["__drive_last_error__"].newValue) {
+      const lastError = changes["__drive_last_error__"].newValue;
+      showStatus(`Googleドライブ同期エラー: ${lastError.message || "不明なエラー"}`);
+    }
+
     if (areaName === "local" && changes[MODE_KEY]) {
-      const nextMode = changes[MODE_KEY].newValue === "local" ? "local" : "sync";
+      const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== storageMode) {
         storageMode = nextMode;
         storage = storageMode === "local" ? chrome.storage.local : chrome.storage.sync;
@@ -385,7 +343,8 @@
   });
 
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
-    const mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
+    const mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
     storageMode = mode;
     if (mode === "local") {
       storage = chrome.storage.local;

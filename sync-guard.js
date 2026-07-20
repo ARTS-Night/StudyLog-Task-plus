@@ -35,11 +35,11 @@ const SyncGuard = (() => {
     callbacks.splice(0).forEach((cb) => cb());
   }
 
-  // mode: "sync" | "local"、readyAt: __sync_ready__ に保存済みの確認日時
+  // mode: "sync" | "local" | "drive"、readyAt: __sync_ready__ に保存済みの確認日時
   function init(mode, readyAt) {
-    // ローカル保存モードなら同期を待つ必要はない（ただしフラグは保存せず、
-    // 後で同期モードに切り替えたときは改めてチェックする）
-    if (mode === "local") {
+    // "sync" 以外（ローカル・ドライブ共有）は chrome.storage.local が実体なので、
+    // 同期を待つ必要はない（ただしフラグは保存せず、後で同期モードに切り替えたときは改めてチェックする）
+    if (mode !== "sync") {
       markReady(false);
       return;
     }

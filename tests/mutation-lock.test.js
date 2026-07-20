@@ -101,6 +101,8 @@ function loadLock(runtime) {
   let nextIntervalId = 1;
   const context = vm.createContext({
     chrome: { runtime },
+    // drive-sync.js / drive-mirror-background.js はこのテストの対象外（FIFOキューのみ検証する）
+    importScripts() {},
     clearInterval(id) { intervals.delete(id); },
     console,
     Error,
@@ -127,6 +129,7 @@ function loadLock(runtime) {
 
   return {
     lock: vm.runInContext("TaskMutationLock", context),
+    queue: vm.runInContext("TaskMutationQueue", context),
     intervals
   };
 }
@@ -208,14 +211,43 @@ async function testFifoOrder(lock) {
   assert.deepEqual(order, [1, 2, 3], "要求を到着順のFIFOで実行する");
 }
 
+// Service Worker 内部からの要求（TaskMutationQueue）も Port 経由の要求と同じ FIFO に並ぶ
+async function testInternalQueueSharesFifo(lock, queue) {
+  const order = [];
+  const gate = deferred();
+
+  const viaPort = lock.request(async () => {
+    order.push("port");
+    await gate.promise;
+  });
+  // Port要求がService Workerのキューへ届いて実行中になるのを待ってから内部要求を出す
+  await settle();
+  const internal = queue.run(() => {
+    order.push("internal");
+    return "internal-result";
+  });
+
+  await settle();
+  assert.deepEqual(order, ["port"], "内部要求もPort要求の完了を待つ");
+  gate.resolve();
+  await viaPort;
+  assert.equal(await internal, "internal-result");
+  assert.deepEqual(order, ["port", "internal"]);
+
+  // 内部要求の例外も解放を妨げない
+  await assert.rejects(queue.run(() => Promise.reject(new Error("内部の例外"))), /内部の例外/);
+  assert.equal(await lock.request(() => "after-internal"), "after-internal");
+}
+
 async function main() {
   const runtime = createRuntime();
-  const { lock, intervals } = loadLock(runtime);
+  const { lock, queue, intervals } = loadLock(runtime);
 
   await testTwoRequestsAreSerialized(lock, intervals);
   await testExceptionReleasesNext(lock);
   await testUnexpectedDisconnectRejects(lock, runtime);
   await testFifoOrder(lock);
+  await testInternalQueueSharesFifo(lock, queue);
   await settle();
 
   assert.equal(intervals.size, 0, "完了した要求のheartbeatを残してはいけない");

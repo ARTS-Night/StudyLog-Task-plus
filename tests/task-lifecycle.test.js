@@ -105,6 +105,14 @@ async function main() {
   vm.runInContext(fs.readFileSync("task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
   const lifecycle = context.TaskLifecycle;
 
+  // 未設定・不正値の保存先モードは必ず sync（既存ユーザーの同期データを見失わないための既定値）
+  assert.equal(lifecycle.physicalStorageMode(undefined), "sync");
+  assert.equal(lifecycle.physicalStorageMode(null), "sync");
+  assert.equal(lifecycle.physicalStorageMode("sync"), "sync");
+  assert.equal(lifecycle.physicalStorageMode("unknown"), "sync");
+  assert.equal(lifecycle.physicalStorageMode("local"), "local");
+  assert.equal(lifecycle.physicalStorageMode("drive"), "local");
+
   assert.equal(lifecycle.normalizeTimestamp(now), now);
   assert.equal(lifecycle.normalizeTimestamp(0), 0);
   assert.equal(lifecycle.normalizeRetentionDays("7"), 7);
@@ -120,6 +128,23 @@ async function main() {
     { id: "active-copy", text: "未完了", done: false }
   );
   assert.equal(Object.hasOwn(inconsistentDates, "completedAt"), false, "未完了タスクの古い完了日時は落とす");
+  const googleLinked = lifecycle.normalizeEntry({
+    subject: "連携授業",
+    tasks: [{
+      id: "linked",
+      text: "Google Tasks連携済み",
+      done: false,
+      googleTaskListId: "list-1",
+      googleTaskId: "task-1"
+    }]
+  }, "100").tasks[0];
+  assert.equal(googleLinked.googleTaskListId, "list-1", "GoogleタスクリストIDを正規化後も維持する");
+  assert.equal(googleLinked.googleTaskId, "task-1", "GoogleタスクIDを正規化後も維持する");
+  const googleUnlinked = lifecycle.normalizeEntry({
+    tasks: [{ id: "unlinked", text: "未連携", done: false, googleTaskListId: "", googleTaskId: 123 }]
+  }, "100").tasks[0];
+  assert.equal(Object.hasOwn(googleUnlinked, "googleTaskListId"), false, "空のGoogleタスクリストIDは作らない");
+  assert.equal(Object.hasOwn(googleUnlinked, "googleTaskId"), false, "文字列でないGoogleタスクIDは作らない");
 
   const added = { id: "task", text: "提出", done: false, createdAt: now - day };
   const completed = lifecycle.setDone(added, true, now);
@@ -222,6 +247,19 @@ async function main() {
   const raced = await lifecycle.cleanup("sync", now + 100 * day);
   assert.equal(raced.skipped, "mode-changed");
   assert.equal(syncArea.setCalls.length + syncArea.removeCalls.length, syncWritesBeforeModeRace);
+
+  // 設定画面の保持日数保存も自動整理と同じロックで直列化し、無効値はオフへ正規化する。
+  localArea._data["500"] = {
+    subject: "次回整理",
+    tasks: [{ id: "expired-after-setting", text: "設定変更直後には消さない", done: true, completedAt: now - 8 * day }]
+  };
+  const locksBeforeRetentionSave = lockRequests;
+  assert.equal(await lifecycle.saveRetentionDays("7"), 7);
+  assert.equal(localArea._data.__completed_task_retention_days__, 7, "保持日数はlocalへ保存する");
+  assert.equal(lockRequests, locksBeforeRetentionSave + 1, "設定保存は整理と同じ共通ロックを使う");
+  assert.ok(localArea._data["500"], "設定変更直後には既存の完了タスクを削除しない");
+  assert.equal(await lifecycle.saveRetentionDays("2"), 0, "選択肢にない日数はオフとして保存する");
+  assert.equal(localArea._data.__completed_task_retention_days__, 0);
 
   console.log("task lifecycle test passed");
 }

@@ -14,7 +14,18 @@
   const modeRadios = document.querySelectorAll('input[name="storage-mode"]');
 
   function currentArea() {
-    return mode === "local" ? chrome.storage.local : chrome.storage.sync;
+    // "drive" モードの実体も chrome.storage.local（Googleドライブへはバックグラウンドが別途ミラーする）
+    return mode === "sync" ? chrome.storage.sync : chrome.storage.local;
+  }
+
+  function normalizeMode(value) {
+    return value === "local" || value === "drive" ? value : "sync";
+  }
+
+  function modeLabel(value) {
+    if (value === "local") return "この端末のみ（ローカル保存）";
+    if (value === "drive") return "Google ドライブで共有";
+    return "Google アカウントで同期";
   }
 
   function currentQuota() {
@@ -53,7 +64,7 @@
           reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
           return;
         }
-        const actualMode = result[MODE_KEY] === "local" ? "local" : "sync";
+        const actualMode = normalizeMode(result[MODE_KEY]);
         if (actualMode !== requestedMode) {
           mode = actualMode;
           modeRadios.forEach((radio) => {
@@ -73,13 +84,6 @@
     pending.catch(reportLockError);
   }
 
-  function createTaskId() {
-    if (typeof crypto !== "undefined" && crypto.randomUUID) {
-      return crypto.randomUUID();
-    }
-    return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
-
   const syncGuideEl = document.getElementById("sync-guide");
 
   function updateSyncGuide() {
@@ -94,8 +98,28 @@
     chrome.tabs.create({ url: chrome.runtime.getURL("tasks.html") });
   });
 
+  // ---- 設定内検索 ----
+  // セクションの表示テキスト全体（隠れたボタンのラベル等も含む）で絞り込む
+  const settingsSearch = document.getElementById("settings-search");
+  const searchEmpty = document.getElementById("search-empty");
+  settingsSearch.addEventListener("input", () => {
+    const query = settingsSearch.value.trim().toLowerCase();
+    let anyVisible = false;
+    document.querySelectorAll(".settings-group").forEach((group) => {
+      let visibleInGroup = 0;
+      group.querySelectorAll("section").forEach((section) => {
+        const hit = query === "" || section.textContent.toLowerCase().includes(query);
+        section.hidden = !hit;
+        if (hit) visibleInGroup += 1;
+      });
+      group.hidden = visibleInGroup === 0;
+      if (visibleInGroup > 0) anyVisible = true;
+    });
+    searchEmpty.hidden = anyVisible;
+  });
+
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
-    mode = result[MODE_KEY] === "local" ? "local" : "sync";
+    mode = normalizeMode(result[MODE_KEY]);
     modeRadios.forEach((radio) => {
       radio.checked = radio.value === mode;
     });
@@ -118,6 +142,277 @@
         .catch((error) => showStatus(`完了タスクを自動整理できませんでした: ${error.message}`));
     });
   });
+
+  // ---- 完了タスクの自動削除 ----
+  const retentionSelect = document.getElementById("completed-retention-days");
+  let retentionDays = 0;
+
+  chrome.storage.local.get([TaskLifecycle.RETENTION_DAYS_KEY], (result) => {
+    if (chrome.runtime.lastError) {
+      showStatus(`自動削除の設定を読み込めませんでした: ${chrome.runtime.lastError.message}`);
+      return;
+    }
+    retentionDays = TaskLifecycle.normalizeRetentionDays(result && result[TaskLifecycle.RETENTION_DAYS_KEY]);
+    retentionSelect.value = String(retentionDays);
+    retentionSelect.disabled = false;
+  });
+
+  retentionSelect.addEventListener("change", () => {
+    const previous = retentionDays;
+    retentionSelect.disabled = true;
+    TaskLifecycle.saveRetentionDays(retentionSelect.value)
+      .then((days) => {
+        retentionDays = days;
+        retentionSelect.value = String(days);
+        showStatus(days > 0
+          ? `完了から${days}日後に自動削除します（次回利用時から適用）`
+          : "完了タスクの自動削除をオフにしました");
+      })
+      .catch((error) => {
+        retentionSelect.value = String(previous);
+        showStatus(`自動削除の設定を保存できませんでした: ${error.message}`);
+      })
+      .finally(() => {
+        retentionSelect.disabled = false;
+      });
+  });
+
+  // ---- Google ドライブ連携（ログイン・自動同期の状態表示・手動バックアップ/復元）----
+  const DRIVE_SYNCED_AT_KEY = "__drive_synced_at__";
+  const DRIVE_LAST_ERROR_KEY = "__drive_last_error__";
+  const GOOGLE_TASKS_ENABLED_KEY = "__google_tasks_sync_enabled__";
+  const GOOGLE_TASKS_SYNCED_AT_KEY = "__google_tasks_synced_at__";
+  const GOOGLE_TASKS_LAST_ERROR_KEY = "__google_tasks_last_error__";
+  const driveAccount = document.getElementById("drive-account");
+  const driveSubstatus = document.getElementById("drive-substatus");
+  const driveChip = document.getElementById("drive-chip");
+  const driveError = document.getElementById("drive-error");
+  const driveLoginButton = document.getElementById("btn-drive-login");
+  const driveLogoutButton = document.getElementById("btn-drive-logout");
+  const driveSyncButtons = document.getElementById("drive-sync-buttons");
+  const driveBackupButton = document.getElementById("btn-drive-backup");
+  const driveRestoreButton = document.getElementById("btn-drive-restore");
+  const googleTasksCheckbox = document.getElementById("google-tasks-sync-enabled");
+  const googleTasksSubstatus = document.getElementById("google-tasks-substatus");
+  const googleTasksError = document.getElementById("google-tasks-error");
+
+  function renderSyncError(element, label, lastError) {
+    if (lastError && typeof lastError.message === "string" && lastError.message !== "") {
+      const time = typeof lastError.time === "number" && lastError.time > 0
+        ? `（${new Date(lastError.time).toLocaleString("ja-JP")}）` : "";
+      element.textContent = `${label}: ${lastError.message}${time}`;
+      element.hidden = false;
+    } else {
+      element.hidden = true;
+    }
+  }
+
+  function renderDriveError(lastError) {
+    renderSyncError(driveError, "同期エラー", lastError);
+  }
+
+  function renderGoogleTasksError(lastError) {
+    renderSyncError(googleTasksError, "Google Tasks同期エラー", lastError);
+  }
+
+  function refreshDriveStatus() {
+    GoogleAuth.isLoggedIn().then((loggedIn) => {
+      driveLoginButton.hidden = loggedIn;
+      driveLogoutButton.hidden = !loggedIn;
+      driveSyncButtons.hidden = !loggedIn;
+      googleTasksCheckbox.disabled = !loggedIn;
+      driveChip.textContent = loggedIn ? "接続済み" : "未接続";
+      driveChip.classList.toggle("on", loggedIn);
+      if (!loggedIn) {
+        driveAccount.textContent = "ログインしていません";
+        driveSubstatus.textContent = "「Google ドライブで共有」を使うにはログインしてください";
+        driveError.hidden = true;
+        googleTasksError.hidden = true;
+        return;
+      }
+      Promise.all([
+        GoogleAuth.getUserEmail().catch(() => ""),
+        new Promise((resolve) => {
+          chrome.storage.local.get([
+            DRIVE_SYNCED_AT_KEY,
+            DRIVE_LAST_ERROR_KEY,
+            GOOGLE_TASKS_ENABLED_KEY,
+            GOOGLE_TASKS_SYNCED_AT_KEY,
+            GOOGLE_TASKS_LAST_ERROR_KEY
+          ], (result) => {
+            resolve(!chrome.runtime.lastError && result ? result : {});
+          });
+        })
+      ]).then(([email, stored]) => {
+        const syncedAt = stored[DRIVE_SYNCED_AT_KEY];
+        driveAccount.textContent = email || "Googleアカウント";
+        driveSubstatus.textContent = typeof syncedAt === "number" && syncedAt > 0
+          ? `最終同期: ${new Date(syncedAt).toLocaleString("ja-JP")}`
+          : "まだ同期していません";
+        renderDriveError(stored[DRIVE_LAST_ERROR_KEY]);
+        googleTasksCheckbox.checked = stored[GOOGLE_TASKS_ENABLED_KEY] === true;
+        const googleTasksSyncedAt = stored[GOOGLE_TASKS_SYNCED_AT_KEY];
+        googleTasksSubstatus.textContent = typeof googleTasksSyncedAt === "number" && googleTasksSyncedAt > 0
+          ? `最終同期: ${new Date(googleTasksSyncedAt).toLocaleString("ja-JP")}`
+          : "まだ同期していません";
+        renderGoogleTasksError(stored[GOOGLE_TASKS_LAST_ERROR_KEY]);
+      });
+    });
+  }
+
+  driveLoginButton.addEventListener("click", () => {
+    driveLoginButton.disabled = true;
+    GoogleAuth.login()
+      .then(() => {
+        showStatus("Googleアカウントでログインしました");
+        refreshDriveStatus();
+      })
+      .catch((error) => showStatus(`ログインできませんでした: ${error.message}`))
+      .finally(() => {
+        driveLoginButton.disabled = false;
+      });
+  });
+
+  driveLogoutButton.addEventListener("click", () => {
+    driveLogoutButton.disabled = true;
+    GoogleAuth.logout()
+      .then(() => {
+        showStatus("ログアウトしました");
+        refreshDriveStatus();
+      })
+      .catch((error) => showStatus(`ログアウトできませんでした: ${error.message}`))
+      .finally(() => {
+        driveLogoutButton.disabled = false;
+      });
+  });
+
+  googleTasksCheckbox.addEventListener("change", () => {
+    const enabling = googleTasksCheckbox.checked;
+    googleTasksCheckbox.disabled = true;
+
+    const authorize = enabling ? GoogleAuth.reauthorize() : Promise.resolve();
+    authorize
+      .then(() => new Promise((resolve, reject) => {
+        chrome.storage.local.set({ [GOOGLE_TASKS_ENABLED_KEY]: enabling }, () => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve();
+        });
+      }))
+      .then(() => {
+        showStatus(enabling ? "Google Tasks同期をオンにしました" : "Google Tasks同期をオフにしました");
+      })
+      .catch((error) => {
+        googleTasksCheckbox.checked = !enabling;
+        showStatus(`${enabling ? "Google Tasksの認証" : "Google Tasks同期設定の保存"}に失敗しました: ${error.message}`);
+      })
+      .finally(() => {
+        googleTasksCheckbox.disabled = false;
+      });
+  });
+
+  driveBackupButton.addEventListener("click", () => {
+    // 初回同期の確認前にバックアップすると、まだ届いていないタスクが欠けた不完全な内容になる
+    if (mode === "sync" && syncBlocked()) return;
+    driveBackupButton.disabled = true;
+    // 自動同期(Service Worker)と同じFIFOで直列化し、読み取りから書き込み完了までを
+    // 1区間にする。素通しで書くと、読み取り後に進んだ自動プッシュの新しいDrive内容を
+    // 古いスナップショットで巻き戻してしまう
+    TaskMutationLock.request(() => new Promise((resolve, reject) => {
+      currentArea().get(null, (items) => {
+        if (chrome.runtime.lastError || !items) {
+          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "データを読み込めませんでした"));
+          return;
+        }
+        const data = Object.fromEntries(taskEntries(items));
+        DriveSync.writeTasksFile(data)
+          .then((updatedAt) => new Promise((done) => {
+            // 自動同期がこのバックアップを「未知の新しいスナップショット」と誤解して
+            // 取り込み直さないよう、同期済み時刻も進める
+            chrome.storage.local.set({ [DRIVE_SYNCED_AT_KEY]: updatedAt }, () => {
+              void chrome.runtime.lastError;
+              done();
+            });
+          }))
+          .then(resolve, reject);
+      });
+    }))
+      .then(() => showStatus("Googleドライブへバックアップしました"))
+      .catch((error) => showStatus(`バックアップに失敗しました: ${error.message}`))
+      .finally(() => {
+        driveBackupButton.disabled = false;
+      });
+  });
+
+  driveRestoreButton.addEventListener("click", () => {
+    // 初回同期の確認前に復元すると、まだ届いていない既存タスクを見落としたまま上書きしてしまう
+    if (mode === "sync" && syncBlocked()) return;
+    driveRestoreButton.disabled = true;
+    DriveSync.readTasksFile()
+      .then((file) => {
+        const data = file ? file.data : null;
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+          showStatus("Googleドライブにバックアップが見つかりませんでした");
+          return;
+        }
+
+        // 授業IDごとに形式を検証し、タスクとして解釈できるものだけを取り込む
+        // （インポート機能と同じ正規化ルールを使う）
+        const clean = {};
+        const seenIds = new Set();
+        taskEntries(data).forEach(([classId, value]) => {
+          const entry = normalizeEntry(value);
+          const tasks = entry.tasks
+            .map((task) => {
+              let id = typeof task.id === "string" && task.id !== "" ? task.id : TaskLifecycle.createTaskId();
+              if (seenIds.has(id)) id = TaskLifecycle.createTaskId();
+              seenIds.add(id);
+              return TaskLifecycle.copyTimestamps(
+                task,
+                { id, text: task.text.trim(), done: task.done === true }
+              );
+            })
+            .filter((task) => task.text !== "");
+          if (tasks.length === 0) return;
+          clean[classId] = { subject: entry.subject, tasks };
+        });
+
+        if (Object.keys(clean).length === 0) {
+          showStatus("Googleドライブのバックアップにタスクが見つかりませんでした");
+          return;
+        }
+
+        // どの授業が上書きされるかを確認ダイアログに列挙する（多すぎる場合は先頭だけ）
+        const summaryLines = Object.entries(clean).map(([classId, entry]) =>
+          `・${entry.subject || `授業ID ${classId}`}（${entry.tasks.length}件）`
+        );
+        const shownLines = summaryLines.slice(0, 10);
+        if (summaryLines.length > shownLines.length) {
+          shownLines.push(`…他${summaryLines.length - shownLines.length}授業`);
+        }
+        if (!confirm(`${summaryLines.length} 授業分のタスクを復元します。次の授業の既存タスクは上書きされます。よろしいですか？\n\n${shownLines.join("\n")}`)) {
+          return;
+        }
+
+        runMutationExclusive((releaseMutation) => {
+          currentArea().set(clean, () => {
+            if (chrome.runtime.lastError) {
+              showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
+              releaseMutation();
+              return;
+            }
+            refreshUsage();
+            showStatus("Googleドライブから復元しました");
+            releaseMutation();
+          });
+        }, true);
+      })
+      .catch((error) => showStatus(`復元に失敗しました: ${error.message}`))
+      .finally(() => {
+        driveRestoreButton.disabled = false;
+      });
+  });
+
+  refreshDriveStatus();
 
   // 同期領域へ書き込む操作の前に呼ぶ。初回同期の確認が済んでいない間に書き込むと、
   // まだ届いていない同期データを空の内容で上書きしてしまう可能性がある
@@ -286,6 +581,28 @@
       window.location.reload();
       return;
     }
+    if (areaName === "local" && changes[TaskLifecycle.RETENTION_DAYS_KEY] && !retentionSelect.disabled) {
+      retentionDays = TaskLifecycle.normalizeRetentionDays(changes[TaskLifecycle.RETENTION_DAYS_KEY].newValue);
+      retentionSelect.value = String(retentionDays);
+    }
+    if (areaName === "local" && changes[DRIVE_SYNCED_AT_KEY]) {
+      refreshDriveStatus();
+    }
+    if (areaName === "local" && changes[DRIVE_LAST_ERROR_KEY]) {
+      renderDriveError(changes[DRIVE_LAST_ERROR_KEY].newValue);
+    }
+    if (areaName === "local" && changes[GOOGLE_TASKS_LAST_ERROR_KEY]) {
+      renderGoogleTasksError(changes[GOOGLE_TASKS_LAST_ERROR_KEY].newValue);
+    }
+    if (areaName === "local" && changes[GOOGLE_TASKS_SYNCED_AT_KEY]) {
+      const syncedAt = changes[GOOGLE_TASKS_SYNCED_AT_KEY].newValue;
+      googleTasksSubstatus.textContent = typeof syncedAt === "number" && syncedAt > 0
+        ? `最終同期: ${new Date(syncedAt).toLocaleString("ja-JP")}`
+        : "まだ同期していません";
+    }
+    if (areaName === "local" && changes[GOOGLE_TASKS_ENABLED_KEY] && !googleTasksCheckbox.disabled) {
+      googleTasksCheckbox.checked = changes[GOOGLE_TASKS_ENABLED_KEY].newValue === true;
+    }
     if (areaName === "sync" && changes[SYNC_CHECK_KEY]) {
       renderSyncCheck();
     }
@@ -307,7 +624,9 @@
         return;
       }
 
-      const label = newMode === "local" ? "この端末のみ（ローカル保存）" : "Google アカウントで同期";
+      // 確認ダイアログはクリック直後の同期処理で出す。Googleログインのポップアップを
+      // 挟んだ後に confirm() を呼ぶと、このタブが最前面でないため Chrome に抑制される
+      const label = modeLabel(newMode);
       if (!confirm(`保存先を「${label}」に切り替えます。\n現在のタスクは新しい保存先へコピーされ、新しい保存先に残っている古いタスクは現在の内容で置き換えられます。よろしいですか？`)) {
         modeRadios.forEach((r) => {
           r.checked = r.value === mode;
@@ -315,8 +634,10 @@
         return;
       }
 
+      const startSwitch = () => {
       const source = currentArea();
-      const target = newMode === "local" ? chrome.storage.local : chrome.storage.sync;
+      // "drive" モードの実体も chrome.storage.local（Googleドライブへの反映はバックグラウンドが行う）
+      const target = newMode === "sync" ? chrome.storage.sync : chrome.storage.local;
 
       const revertRadios = () => {
         modeRadios.forEach((r) => {
@@ -426,6 +747,32 @@
       });
         });
     }, true, revertRadios);
+      };
+
+      // ドライブ共有はGoogleログインが前提。未ログインならその場でログインを促し、
+      // 失敗・キャンセル時は選択を元に戻す
+      if (newMode === "drive") {
+        GoogleAuth.isLoggedIn().then((loggedIn) => {
+          if (loggedIn) {
+            startSwitch();
+            return;
+          }
+          GoogleAuth.login()
+            .then(() => {
+              refreshDriveStatus();
+              startSwitch();
+            })
+            .catch((error) => {
+              showStatus(`Googleドライブ共有にはログインが必要です: ${error.message}`);
+              modeRadios.forEach((r) => {
+                r.checked = r.value === mode;
+              });
+            });
+        });
+        return;
+      }
+
+      startSwitch();
   });
   });
 
@@ -538,9 +885,9 @@
         const entry = normalizeEntry(value);
         const tasks = entry.tasks
           .map((task) => {
-            let id = typeof task.id === "string" && task.id !== "" ? task.id : createTaskId();
+            let id = typeof task.id === "string" && task.id !== "" ? task.id : TaskLifecycle.createTaskId();
             // 同じ ID が重複していると、1件の削除操作で複数のタスクが消えるため振り直す
-            if (seenIds.has(id)) id = createTaskId();
+            if (seenIds.has(id)) id = TaskLifecycle.createTaskId();
             seenIds.add(id);
             return TaskLifecycle.copyTimestamps(
               task,
