@@ -19,7 +19,10 @@
     });
     const response = await GoogleAuth.authFetch(token, `${FILES_API}?${params.toString()}`);
     const data = await response.json();
-    return data.files && data.files[0] ? data.files[0].id : null;
+    return data && Array.isArray(data.files) && data.files[0]
+      && typeof data.files[0].id === "string" && data.files[0].id !== ""
+      ? data.files[0].id
+      : null;
   }
 
   async function ensureFolderId(token) {
@@ -32,7 +35,10 @@
     });
     const created = await response.json();
     // 作成と同時に他端末も作っていた場合に備え、正本（最古）を選び直す
-    return (await findFolderId(token)) || created.id;
+    const canonicalId = await findFolderId(token);
+    if (canonicalId) return canonicalId;
+    if (created && typeof created.id === "string" && created.id !== "") return created.id;
+    throw new Error("Google Drive上の保存フォルダを作成できませんでした");
   }
 
   // 端末の時計ずれで他端末の更新を無視しないよう、版管理にはDriveサーバー管理の
@@ -50,7 +56,10 @@
     });
     const response = await GoogleAuth.authFetch(token, `${FILES_API}?${params.toString()}`);
     const data = await response.json();
-    return data.files && data.files[0] ? data.files[0] : null;
+    return data && Array.isArray(data.files) && data.files[0]
+      && typeof data.files[0].id === "string" && data.files[0].id !== ""
+      ? data.files[0]
+      : null;
   }
 
   // ドライブ上の保存形式: { version: 1, updatedAt, data }。

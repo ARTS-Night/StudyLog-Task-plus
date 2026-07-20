@@ -13,46 +13,18 @@
   const RETRY_PERIOD_MINUTES = 2;
 
   let chain = Promise.resolve();
+  let pendingOpsChain = Promise.resolve();
+  let listMapChain = Promise.resolve();
   let applying = false;
+  const listResolutionInFlight = new Map();
 
-  function isNumericKey(key) {
-    return /^\d+$/.test(key);
-  }
-
-  function areaGet(area, keys) {
-    return new Promise((resolve, reject) => {
-      area.get(keys, (result) => {
-        if (chrome.runtime.lastError || !result) {
-          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "ストレージを読み込めませんでした"));
-        } else {
-          resolve(result);
-        }
-      });
-    });
-  }
-
-  function areaSet(area, items) {
-    return new Promise((resolve, reject) => {
-      area.set(items, () => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve();
-      });
-    });
-  }
-
-  function localRemove(keys) {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.remove(keys, () => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve();
-      });
-    });
-  }
-
-  function runExclusive(operation) {
-    const mutationQueue = globalThis.TaskMutationQueue;
-    return mutationQueue ? mutationQueue.run(operation) : operation();
-  }
+  const {
+    isNumericKey,
+    storageGet,
+    storageSet,
+    storageRemove,
+    runExclusive
+  } = ServiceWorkerUtils;
 
   function enqueue(operation) {
     chain = chain.then(operation).catch((error) => recordError(error));
@@ -77,7 +49,7 @@
 
   async function recordError(error) {
     console.warn("Google Tasks同期に失敗しました", error);
-    await areaSet(chrome.storage.local, {
+    await storageSet(chrome.storage.local, {
       [LAST_ERROR_KEY]: {
         message: error && error.message ? error.message : String(error),
         time: Date.now()
@@ -86,60 +58,105 @@
   }
 
   async function markSuccess() {
-    await localRemove([LAST_ERROR_KEY]);
+    await storageRemove(chrome.storage.local, [LAST_ERROR_KEY]);
   }
 
   async function loadPendingOps() {
-    const stored = await areaGet(chrome.storage.local, [PENDING_OPS_KEY]);
+    const stored = await storageGet(chrome.storage.local, [PENDING_OPS_KEY]);
     return validPendingOps(stored[PENDING_OPS_KEY]);
   }
 
-  async function persistOperation(operation) {
-    const pending = await loadPendingOps();
-    pending[operationKey(operation)] = { ...operation };
-    await areaSet(chrome.storage.local, { [PENDING_OPS_KEY]: pending });
+  function updatePendingOps(update, extraItems = {}) {
+    const current = pendingOpsChain.then(async () => {
+      const pending = await loadPendingOps();
+      update(pending);
+      await storageSet(chrome.storage.local, { [PENDING_OPS_KEY]: pending, ...extraItems });
+    });
+    // 1回のストレージ失敗で後続更新まで永久に止めない。
+    pendingOpsChain = current.catch(() => {});
+    return current;
   }
 
-  async function discardOperation(classId, taskId) {
-    const pending = await loadPendingOps();
-    const key = `${classId}:${taskId}`;
-    if (!(key in pending)) return;
-    delete pending[key];
-    await areaSet(chrome.storage.local, { [PENDING_OPS_KEY]: pending });
+  function persistOperation(operation) {
+    return updatePendingOps((pending) => {
+      pending[operationKey(operation)] = { ...operation };
+    });
+  }
+
+  function discardOperation(classId, taskId) {
+    return updatePendingOps((pending) => {
+      delete pending[`${classId}:${taskId}`];
+    });
   }
 
   async function completeOperation(operation) {
     // エラー表示を先に消す。outbox と同期時刻の保存に失敗した場合は pending が残り、
     // 次回再試行で成功状態を確定できる。
     await markSuccess();
-    const pending = await loadPendingOps();
-    delete pending[operationKey(operation)];
-    await areaSet(chrome.storage.local, {
-      [PENDING_OPS_KEY]: pending,
+    await updatePendingOps((pending) => {
+      delete pending[operationKey(operation)];
+    }, {
       [SYNCED_AT_KEY]: Date.now()
     });
   }
 
   async function loadListMap() {
-    const stored = await areaGet(chrome.storage.local, [LIST_MAP_KEY]);
+    const stored = await storageGet(chrome.storage.local, [LIST_MAP_KEY]);
     const map = stored[LIST_MAP_KEY];
     return map && typeof map === "object" && !Array.isArray(map) ? { ...map } : {};
   }
 
-  async function resolveTaskList(classId, subject, ignoreCache = false) {
-    const map = await loadListMap();
-    if (!ignoreCache && validId(map[classId])) return map[classId];
-    const taskList = await GoogleTasksSync.ensureTaskList(subject);
-    map[classId] = taskList.id;
-    await areaSet(chrome.storage.local, { [LIST_MAP_KEY]: map });
-    return taskList.id;
+  function updateListMap(update) {
+    const current = listMapChain.then(async () => {
+      const map = await loadListMap();
+      update(map);
+      await storageSet(chrome.storage.local, { [LIST_MAP_KEY]: map });
+    });
+    listMapChain = current.catch(() => {});
+    return current;
   }
 
-  async function evictTaskList(classId) {
+  // staleListId が指定された404回復では、別の同時処理が既に新しいリストへ
+  // 差し替えていればそれを再利用する。同一授業の解決中Promiseも共有し、
+  // 新規タスクの並列送信で同名リストを複数作らない。
+  async function resolveTaskList(classId, subject, staleListId = "") {
     const map = await loadListMap();
-    if (!(classId in map)) return;
-    delete map[classId];
-    await areaSet(chrome.storage.local, { [LIST_MAP_KEY]: map });
+    if (validId(map[classId]) && (!validId(staleListId) || map[classId] !== staleListId)) {
+      return map[classId];
+    }
+
+    const existing = listResolutionInFlight.get(classId);
+    if (existing) return existing;
+
+    const resolution = (async () => {
+      const latest = await loadListMap();
+      if (validId(latest[classId]) && (!validId(staleListId) || latest[classId] !== staleListId)) {
+        return latest[classId];
+      }
+      const taskList = await GoogleTasksSync.ensureTaskList(subject);
+      if (!taskList || !validId(taskList.id)) {
+        throw new Error("Google TasksのタスクリストIDを取得できませんでした");
+      }
+      await updateListMap((current) => {
+        current[classId] = taskList.id;
+      });
+      return taskList.id;
+    })();
+    listResolutionInFlight.set(classId, resolution);
+    try {
+      return await resolution;
+    } finally {
+      if (listResolutionInFlight.get(classId) === resolution) {
+        listResolutionInFlight.delete(classId);
+      }
+    }
+  }
+
+  function evictTaskList(classId, expectedListId) {
+    return updateListMap((map) => {
+      // 並行中の別タスクが既に新しいリストへ差し替えていたら消さない。
+      if (!validId(expectedListId) || map[classId] === expectedListId) delete map[classId];
+    });
   }
 
   async function createWithListRetry(operation) {
@@ -149,8 +166,7 @@
       return { listId, taskId };
     } catch (error) {
       if (errorStatus(error) !== 404) throw error;
-      await evictTaskList(operation.classId);
-      listId = await resolveTaskList(operation.classId, operation.subject, true);
+      listId = await resolveTaskList(operation.classId, operation.subject, listId);
       const taskId = await GoogleTasksSync.createTask(listId, operation.text, operation.done === true);
       return { listId, taskId };
     }
@@ -158,10 +174,10 @@
 
   async function attachGoogleIds(classId, taskId, googleTaskListId, googleTaskId) {
     await runExclusive(async () => {
-      const flags = await areaGet(chrome.storage.local, [MODE_KEY]);
+      const flags = await storageGet(chrome.storage.local, [MODE_KEY]);
       const areaName = TaskLifecycle.physicalStorageMode(flags[MODE_KEY]);
       const area = chrome.storage[areaName];
-      const latest = await areaGet(area, [classId]);
+      const latest = await storageGet(area, [classId]);
       const entry = latest[classId];
       if (!entry || !Array.isArray(entry.tasks)) throw new Error("Google Tasks IDの書き戻し先が見つかりませんでした");
       const index = entry.tasks.findIndex((task) => task && task.id === taskId);
@@ -171,7 +187,7 @@
       tasks[index] = { ...tasks[index], googleTaskListId, googleTaskId };
       applying = true;
       try {
-        await areaSet(area, { [classId]: { ...entry, tasks } });
+        await storageSet(area, { [classId]: { ...entry, tasks } });
       } finally {
         applying = false;
       }
@@ -219,8 +235,11 @@
 
       // 消えたリスト上の古い taskId は新しいリストでは使えないため、最新のローカル内容で
       // 新規作成し、返されたリストID・タスクIDの両方を書き戻す。
-      await evictTaskList(operation.classId);
-      const replacementListId = await resolveTaskList(operation.classId, operation.subject, true);
+      const replacementListId = await resolveTaskList(
+        operation.classId,
+        operation.subject,
+        operation.googleTaskListId
+      );
       const replacementTaskId = await GoogleTasksSync.createTask(
         replacementListId,
         operation.text,
@@ -253,7 +272,7 @@
     } catch (error) {
       if (errorStatus(error) !== 404) throw error;
       // リストまたはタスクが既に無ければ、Google側は意図した削除済み状態にある。
-      await evictTaskList(operation.classId);
+      await evictTaskList(operation.classId, operation.googleTaskListId);
     }
     await completeOperation(operation);
   }
@@ -290,6 +309,7 @@
       : change.oldValue && typeof change.oldValue.subject === "string" ? change.oldValue.subject : "";
     const pending = await loadPendingOps();
 
+    const actions = [];
     for (const [taskId, task] of newTasks) {
       const previous = oldTasks.get(taskId);
       if (previous && previous.text === task.text && previous.done === task.done) continue;
@@ -308,33 +328,38 @@
       const operation = validId(linkedListId) && validId(linkedTaskId)
         ? { type: "update", ...base, googleTaskListId: linkedListId, googleTaskId: linkedTaskId }
         : { type: "create", ...base };
-      await persistAndAttempt(operation);
+      actions.push(() => persistAndAttempt(operation));
     }
 
     for (const [taskId, task] of oldTasks) {
       if (newTasks.has(taskId)) continue;
-      const existing = (await loadPendingOps())[`${classId}:${taskId}`];
+      const existing = pending[`${classId}:${taskId}`];
       const linkedListId = validId(task.googleTaskListId) ? task.googleTaskListId
         : existing && validId(existing.googleTaskListId) ? existing.googleTaskListId : "";
       const linkedTaskId = validId(task.googleTaskId) ? task.googleTaskId
         : existing && validId(existing.googleTaskId) ? existing.googleTaskId : "";
       if (!validId(linkedListId) || !validId(linkedTaskId)) {
         // 作成前にローカルから消えたタスクは、送るべきリモート操作がない。
-        await discardOperation(classId, taskId);
+        actions.push(() => discardOperation(classId, taskId).catch(recordError));
         continue;
       }
-      await persistAndAttempt({
+      const operation = {
         type: "delete",
         classId,
         taskId,
         googleTaskListId: linkedListId,
         googleTaskId: linkedTaskId
-      });
+      };
+      actions.push(() => persistAndAttempt(operation));
     }
+
+    // outboxのread-modify-writeは updatePendingOps が直列化し、API呼出しはタスク単位で
+    // 独立に進める。同一授業の新規リスト解決は resolveTaskList が1本へ束ねる。
+    await Promise.all(actions.map((action) => action()));
   }
 
   async function processChanges(changes, areaName) {
-    const flags = await areaGet(chrome.storage.local, [MODE_KEY, ENABLED_KEY]);
+    const flags = await storageGet(chrome.storage.local, [MODE_KEY, ENABLED_KEY]);
     if (flags[ENABLED_KEY] !== true) return;
     if (TaskLifecycle.physicalStorageMode(flags[MODE_KEY]) !== areaName) return;
 
@@ -344,7 +369,7 @@
   }
 
   async function retryPendingOperations() {
-    const flags = await areaGet(chrome.storage.local, [ENABLED_KEY, PENDING_OPS_KEY]);
+    const flags = await storageGet(chrome.storage.local, [ENABLED_KEY, PENDING_OPS_KEY]);
     if (flags[ENABLED_KEY] !== true) return;
     const pending = validPendingOps(flags[PENDING_OPS_KEY]);
     for (const operation of Object.values(pending)) {

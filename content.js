@@ -40,6 +40,13 @@
 
   // 初回同期ガード本体は sync-guard.js（content.js より先に読み込まれる）
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+    if (chrome.runtime.lastError || !result) {
+      console.warn(
+        "[スタログ授業タスク] 保存先を確認できないため初期化を中止しました",
+        chrome.runtime.lastError ? chrome.runtime.lastError.message : "ストレージ結果がありません"
+      );
+      return;
+    }
     // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
     const mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
     storageMode = mode;

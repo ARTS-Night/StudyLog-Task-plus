@@ -10,7 +10,7 @@
 - `content.js` はホームの授業別タスクボタンに加え、お知らせ直下へ全授業の未完了・完了タスクを横断表示して編集できるタスク一覧ウィジェットを挿入します。
 - 対象は Chrome デスクトップと `https://portal.iwasaki.ac.jp/` 配下です。保存先は `sync` / `local` / `drive` の3モードで、`drive` の実データも物理的には `chrome.storage.local` です。物理領域の判定は必ず `TaskLifecycle.physicalStorageMode()` を使い、未設定・不正値は `sync` に倒してください（既存ユーザーの同期データを見失わないための重要な既定値）。
 - `google-auth.js` は Google API 共通の OAuth・トークン処理を提供します。ログイン・ログアウト（Google側のトークン失効込み）・再認可・アカウントメール取得と、401時にキャッシュを破棄して1回だけ再試行する共通fetchを持ちます。`drive-sync.js` は Drive 固有のフォルダ・ファイル処理だけを担当し、マイドライブの可視フォルダ `stalog_task_plus` 内の `stalog-tasks.json` を読み書きします。`manifest.json` の同じOAuthクライアントを Drive と Google Tasks で共有し、学校のGoogle Workspaceアカウントでのみログインできます。
-- Google Tasks連携は、保存先モードと独立した任意の一方向プッシュです。スタログ側の追加・本文変更・完了切替・削除だけを送り、Google Tasks側の編集は読み戻しません。`google-tasks-sync.js` は状態を持たないAPIラッパー、`google-tasks-mirror-background.js` は授業IDごとのタスクリスト対応表、タスクIDの書き戻し、タスク単位の永続outboxを担当します。操作意図はAPI呼出し前に `__google_tasks_pending_ops__` へ保存し、失敗分をService Worker起動時と2分間隔のアラームで個別に再試行します。リモート作成後は返されたリストID・タスクIDをoutboxへ先に保存してからローカルへ書き戻し、書き戻し失敗時の重複作成を防ぎます。更新先リストの404時は古いタスクIDを再利用せず、再解決したリストへ最新のローカル内容で新規作成して両IDを書き戻します。削除の404は既に削除済みとして完了します。授業ごとに科目名と同名の平坦なタスクリストを1つ使います。
+- Google Tasks連携は、保存先モードと独立した任意の一方向プッシュです。スタログ側の追加・本文変更・完了切替・削除だけを送り、Google Tasks側の編集は読み戻しません。`google-tasks-sync.js` は状態を持たないAPIラッパー、`google-tasks-mirror-background.js` は授業IDごとのタスクリスト対応表、タスクIDの書き戻し、タスク単位の永続outboxを担当します。操作意図はAPI呼出し前に `__google_tasks_pending_ops__` へ保存し、失敗分をService Worker起動時と2分間隔のアラームで個別に再試行します。同じ授業変更に含まれる複数タスクのAPI処理は並列に行いますが、outboxとタスクリスト対応表のread-modify-writeはそれぞれ直列化し、同一授業のタスクリスト解決中Promiseを共有して重複作成を防ぎます。リモート作成後は返されたリストID・タスクIDをoutboxへ先に保存してからローカルへ書き戻し、書き戻し失敗時の重複作成を防ぎます。更新先リストの404時は古いタスクIDを再利用せず、再解決したリストへ最新のローカル内容で新規作成して両IDを書き戻します。削除の404は既に削除済みとして完了します。授業ごとに科目名と同名の平坦なタスクリストを1つ使います。
 - `drive-mirror-background.js` は Service Worker 内の双方向同期エンジンです。`drive` モードのとき、ローカルのタスク変更を `__drive_dirty__` として永続化しデバウンス後にプッシュ、SW起動時と5分間隔のアラームでドライブ側の新しいスナップショット（`updatedAt` が `__drive_synced_at__` より新しいもの）を取り込みます。dirty がある間は取り込みを止めてローカル編集を守り、さらに永続化前・永続化失敗直後の編集はSWメモリ上の即時 dirty（`memoryDirty`）が pull を抑止します。ストレージ適用は `TaskMutationQueue`（Port版 `TaskMutationLock` と同じFIFO）内で行い、**grant後にモード・dirty・同期時刻を必ず再確認**します（プッシュはロック待ち中の保存先切替で中止、プルはロック待ち中に同期時刻が進んでいたら中止。driveモードへの切替直後の初回取り込みだけは過去の同期時刻を無視）。サーバー時刻を確認できないスナップショットは自動取り込みしません。ローカルにデータがある状態での drive 参加は、初回プッシュの**前**に dirty を永続化し、成功するまで pull を抑止します（認証失効・通信障害で初回送信が失敗しても既存Drive内容にローカルを置換されないため）。授業キーを1つも含まないのに内容のあるスナップショットは形式異常として適用しません。pull の適用は Service Worker のロック grant 数（`TaskMutationQueue.grantCount()`）を Drive 読込前後で照合し、間に他のタスク変更が grant されていたら見送ります（その編集の dirty 反映は onChanged 経由の非同期で、まだ見えていない可能性があるため）。プッシュには `pushId` を埋め込み、結果不明の再試行は「Drive側のpushIdが自分→確認のみ／送信前の基準版と同じ→再送／基準から変化→他端末の後発としてLWW通り譲る／照合読込が失敗→再送せず延期」の状態機械で決着させます。`writeTasksFile` の modifiedTime フォールバックも内容を読み直して pushId 照合が取れた場合だけ採用します（他端末の時刻を自分の同期結果として記録しない）。競合は「最後の書き込み勝ち」で、タスク単位のマージはしません。
 - ドライブスナップショットの版比較に使う `updatedAt` は、端末の `Date.now()` ではなく Drive サーバー管理の `modifiedTime` です（時計がずれた端末が同期を恒久停止させないため）。`DriveSync.writeTasksFile()` は `fields=id,modifiedTime` 付きでアップロードしてサーバー時刻を返し、応答から取れない場合は再検索で取得、それでも取れなければ**エラーにして dirty を残します**。端末時刻で代用するコードへ戻さないでください。
 - フォルダ・ファイルの検索は `orderBy=createdTime` で最古を正本として選び、新規作成は「メタデータのみ作成→正本を選び直し→内容をPATCH」の順です。2端末が同時に初期化して重複が生まれても、全端末が同じ正本ファイルへ収束します（重複側は孤児として残るだけ）。find-then-create を素朴な一発作成へ戻さないでください。
@@ -35,6 +35,7 @@
 | `sync-guard.js` | Chrome Sync の初回ダウンロード待ちを扱う共通ガード |
 | `mutation-lock.js` | Service Worker の共通変更キューを利用するクライアント |
 | `mutation-lock-background.js` | 全画面・content script の変更を FIFO で直列化する Service Worker。SW内部用の `TaskMutationQueue` も提供し、Google認証・Drive同期・Google Tasks同期の各モジュールを `importScripts` で読み込む |
+| `service-worker-utils.js` | Drive / Google Tasks の Service Worker 同期処理で共用する数字キー判定、ストレージPromiseラッパー、`TaskMutationQueue`実行ラッパー |
 | `google-auth.js` | Drive / Google Tasks 共通のOAuthトークン取得・再認可・ログイン・ログアウト・userinfo取得・認証付きfetch |
 | `drive-sync.js` | Google Driveの可視フォルダとタスクJSONを読み書きする状態なしのAPIモジュール |
 | `drive-mirror-background.js` | `drive`モードの双方向同期エンジン。ローカル変更のデバウンスプッシュ、起動時・定期アラームでのプル、dirtyガード |
@@ -56,7 +57,7 @@
 | `tests/drive-sync.test.js` | appDataFolderへの新規作成/更新の振り分け、401時のトークン破棄を確認するテスト |
 | `tests/drive-mirror.test.js` | driveモード時のみデバウンスしてプッシュすること、内部キー無視、未ログイン時のスキップを確認するテスト |
 | `tests/google-tasks-sync.test.js` | Google Tasksのリスト検索・作成、タスク追加・更新・削除のAPI契約を確認するテスト |
-| `tests/google-tasks-mirror.test.js` | Google Tasksへの差分送信、永続outboxとアラーム再試行、重複作成防止、競合安全なID書き戻し、404自己修復を確認するテスト |
+| `tests/google-tasks-mirror.test.js` | Google Tasksへの差分送信、永続outboxとアラーム再試行、同一授業の並列追加でタスクリストを重複作成しないこと、競合安全なID書き戻し、404自己修復を確認するテスト |
 | `344赤池璃月＿企画書.md` / `344赤池璃月_研究資料.md` | ユーザーの研究文書。明示依頼なしに改稿しない |
 | `StudyLog-Task-plus.zip` | 追跡済みの配布物。リリース依頼なしに再生成・ステージしない |
 
@@ -69,6 +70,8 @@
 3. Tree Ivy Replanted は授業詳細を同一オリジンの iframe で右側へ開くため、タスクUI側には `all_frames: true` が必要です。
 4. 授業カタログ処理を全フレームへ入れると、iframeごとに抽出・取得・メッセージリスナーが重複します。2つの manifest エントリを統合しないでください。
 5. `sync-guard.js`、`mutation-lock.js`、`task-lifecycle.js` は、それらを利用する `content.js`、`popup.js`、`tasks.js`、`settings.js` より必ず先に読み込んでください。
+
+Service Worker は `mutation-lock-background.js` の `importScripts()` で、`task-lifecycle.js` → `service-worker-utils.js` → Google APIラッパー → Drive / Google Tasks のミラー処理の順に読み込みます。`service-worker-utils.js` は両ミラーより前に必要です。`TaskMutationQueue` 自体は `importScripts()` 後に作られるため、共通の `runExclusive()` は呼出し時にキューを参照します。
 
 `mutation-lock-background.js` は DOM やタスク本体へ触れず、`runtime.connect()` の Port を要求順に1件ずつ許可します。content script の Web Locks はホスト側、拡張画面の Web Locks は拡張機能側に分かれるため、この Service Worker のキューを全体変更ロックとして使用します。専用画面によるマイページ取得は `chrome.tabs.create({ active: false })` と content script のメッセージで完結します。取得成功時だけ送信元タブと更新日時を検証して背景タブを閉じ、失敗時はログイン状態を確認できるよう残します。
 

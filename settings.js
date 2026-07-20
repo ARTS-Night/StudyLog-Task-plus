@@ -119,6 +119,13 @@
   });
 
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+    if (chrome.runtime.lastError || !result) {
+      showStatus(`保存先を確認できませんでした: ${chrome.runtime.lastError
+        ? chrome.runtime.lastError.message
+        : "ストレージ結果がありません"}`);
+      modeRadios.forEach((radio) => { radio.disabled = true; });
+      return;
+    }
     mode = normalizeMode(result[MODE_KEY]);
     modeRadios.forEach((radio) => {
       radio.checked = radio.value === mode;

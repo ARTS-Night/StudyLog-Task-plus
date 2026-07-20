@@ -31,47 +31,10 @@
   // 消さないための、Service Worker メモリ上の即時 dirty。永続化の失敗時も
   // SW が生きている間は pull を抑止する。プッシュ成功時に解除する。
   let memoryDirty = false;
-
-  function isNumericKey(key) {
-    return /^\d+$/.test(key);
-  }
-
-  function storageGet(keys) {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.get(keys, (result) => {
-        if (chrome.runtime.lastError || !result) {
-          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "ストレージを読み込めませんでした"));
-        } else {
-          resolve(result);
-        }
-      });
-    });
-  }
-
-  function storageSet(items) {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.set(items, () => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve();
-      });
-    });
-  }
-
-  function storageRemove(keys) {
-    if (keys.length === 0) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.remove(keys, () => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve();
-      });
-    });
-  }
-
-  // importScripts の読み込み順の都合で、TaskMutationQueue は呼び出し時に参照する
-  function runExclusive(operation) {
-    const mutationQueue = globalThis.TaskMutationQueue;
-    return mutationQueue ? mutationQueue.run(operation) : operation();
-  }
+  const { isNumericKey, runExclusive } = ServiceWorkerUtils;
+  const storageGet = ServiceWorkerUtils.storageGet.bind(null, chrome.storage.local);
+  const storageSet = ServiceWorkerUtils.storageSet.bind(null, chrome.storage.local);
+  const storageRemove = ServiceWorkerUtils.storageRemove.bind(null, chrome.storage.local);
 
   function enqueue(operation) {
     chain = chain

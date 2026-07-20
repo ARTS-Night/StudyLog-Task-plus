@@ -2,6 +2,7 @@
 
 importScripts(
   "task-lifecycle.js",
+  "service-worker-utils.js",
   "google-auth.js",
   "drive-sync.js",
   "google-tasks-sync.js",

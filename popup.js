@@ -126,11 +126,13 @@
     const requestedStorage = storage;
     requestedStorage.get(null, (items) => {
       if (generation !== renderGeneration || requestedStorage !== storage) return;
-      if (chrome.runtime.lastError) {
+      if (chrome.runtime.lastError || !items) {
         content.innerHTML = "";
         const failed = document.createElement("div");
         failed.className = "empty";
-        failed.textContent = `読み込みに失敗しました: ${chrome.runtime.lastError.message}`;
+        failed.textContent = `読み込みに失敗しました: ${chrome.runtime.lastError
+          ? chrome.runtime.lastError.message
+          : "ストレージ結果がありません"}`;
         content.appendChild(failed);
         return;
       }
@@ -343,6 +345,16 @@
   });
 
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+    if (chrome.runtime.lastError || !result) {
+      content.innerHTML = "";
+      const failed = document.createElement("div");
+      failed.className = "empty";
+      failed.textContent = `保存先を確認できませんでした: ${chrome.runtime.lastError
+        ? chrome.runtime.lastError.message
+        : "ストレージ結果がありません"}`;
+      content.appendChild(failed);
+      return;
+    }
     // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
     const mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
     storageMode = mode;

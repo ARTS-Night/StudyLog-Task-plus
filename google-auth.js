@@ -15,8 +15,12 @@
   }
 
   function forgetToken(token) {
-    return new Promise((resolve) => {
-      chrome.identity.removeCachedAuthToken({ token }, () => resolve());
+    return new Promise((resolve, reject) => {
+      chrome.identity.removeCachedAuthToken({ token }, () => {
+        const error = chrome.runtime.lastError;
+        if (error) reject(new Error(error.message));
+        else resolve();
+      });
     });
   }
 

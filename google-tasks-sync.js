@@ -3,6 +3,11 @@
 
   const API = "https://tasks.googleapis.com/tasks/v1";
 
+  function requireId(value, message) {
+    if (typeof value !== "string" || value === "") throw new Error(message);
+    return value;
+  }
+
   async function request(url, options = {}) {
     const token = await GoogleAuth.getToken(true);
     return GoogleAuth.authFetch(token, url, options);
@@ -11,8 +16,8 @@
   async function ensureTaskList(subject) {
     const response = await request(`${API}/users/@me/lists`);
     const data = await response.json();
-    const existing = Array.isArray(data.items)
-      ? data.items.find((item) => item && item.title === subject)
+    const existing = data && Array.isArray(data.items)
+      ? data.items.find((item) => item && item.title === subject && typeof item.id === "string" && item.id !== "")
       : null;
     if (existing) return { id: existing.id, title: existing.title };
 
@@ -22,7 +27,10 @@
       body: JSON.stringify({ title: subject })
     });
     const created = await createdResponse.json();
-    return { id: created.id, title: created.title };
+    return {
+      id: requireId(created && created.id, "Google TasksのタスクリストIDを取得できませんでした"),
+      title: created && typeof created.title === "string" ? created.title : subject
+    };
   }
 
   async function createTask(taskListId, title, done) {
@@ -32,7 +40,7 @@
       body: JSON.stringify({ title, status: done ? "completed" : "needsAction" })
     });
     const created = await response.json();
-    return created.id;
+    return requireId(created && created.id, "Google TasksのタスクIDを取得できませんでした");
   }
 
   async function updateTask(taskListId, googleTaskId, task) {

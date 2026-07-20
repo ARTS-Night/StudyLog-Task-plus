@@ -5,7 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const source = fs.readFileSync(path.join(__dirname, "..", "drive-mirror-background.js"), "utf8");
+const source = [
+  "service-worker-utils.js",
+  "drive-mirror-background.js"
+].map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 
 function settle(times = 20) {
   let p = Promise.resolve();

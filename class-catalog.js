@@ -138,8 +138,10 @@
   function getCatalog() {
     return new Promise((resolve, reject) => {
       chrome.storage.local.get([CATALOG_KEY], (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
+        if (chrome.runtime.lastError || !result) {
+          reject(new Error(chrome.runtime.lastError
+            ? chrome.runtime.lastError.message
+            : "授業一覧を読み込めませんでした"));
           return;
         }
         resolve(result[CATALOG_KEY] || {});
@@ -162,8 +164,10 @@
   function getPartialCatalog() {
     return new Promise((resolve, reject) => {
       chrome.storage.local.get([PARTIAL_CATALOG_KEY], (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
+        if (chrome.runtime.lastError || !result) {
+          reject(new Error(chrome.runtime.lastError
+            ? chrome.runtime.lastError.message
+            : "補助授業一覧を読み込めませんでした"));
           return;
         }
         resolve(result[PARTIAL_CATALOG_KEY] || {});
@@ -186,8 +190,10 @@
   function getLastAttempt() {
     return new Promise((resolve, reject) => {
       chrome.storage.local.get([CATALOG_ATTEMPT_KEY], (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
+        if (chrome.runtime.lastError || !result) {
+          reject(new Error(chrome.runtime.lastError
+            ? chrome.runtime.lastError.message
+            : "授業一覧の取得履歴を読み込めませんでした"));
           return;
         }
         resolve(Number(result[CATALOG_ATTEMPT_KEY]) || 0);

@@ -5,7 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const source = fs.readFileSync(path.join(__dirname, "..", "google-tasks-mirror-background.js"), "utf8");
+const source = [
+  "service-worker-utils.js",
+  "google-tasks-mirror-background.js"
+].map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const PENDING_KEY = "__google_tasks_pending_ops__";
 const ERROR_KEY = "__google_tasks_last_error__";
 const SYNCED_AT_KEY = "__google_tasks_synced_at__";
@@ -210,6 +213,47 @@ async function main() {
     assert.equal(runtime.localData["200"].tasks.length, 2);
     assert.equal(runtime.localData["200"].tasks[1].id, "t2");
     assert.equal(runtime.localData["200"].tasks[0].googleTaskId, "google-delayed");
+  }
+
+  // 同一の新規授業へ複数タスクを一括追加しても、リスト解決は1回だけ共有し、
+  // 各タスクのAPI作成は並列に進める。
+  {
+    let releaseList;
+    let inFlightCreates = 0;
+    let maxConcurrentCreates = 0;
+    const runtime = createRuntime({
+      local: { __storage_mode__: "local", __google_tasks_sync_enabled__: true },
+      api: {
+        ensureTaskList: () => new Promise((resolve) => {
+          releaseList = () => resolve({ id: "single-list", title: "並列処理" });
+        }),
+        createTask: async (listId, title) => {
+          inFlightCreates += 1;
+          maxConcurrentCreates = Math.max(maxConcurrentCreates, inFlightCreates);
+          await new Promise((resolve) => setImmediate(resolve));
+          inFlightCreates -= 1;
+          return `google-${title}`;
+        }
+      }
+    });
+    runtime.change("local", "250", {
+      subject: "並列処理",
+      tasks: [
+        { id: "t1", text: "課題1", done: false },
+        { id: "t2", text: "課題2", done: false },
+        { id: "t3", text: "課題3", done: false }
+      ]
+    });
+    await settle(4);
+    assert.equal(runtime.calls.ensure.length, 1, "同一授業のリスト解決を1回に束ねる");
+    releaseList();
+    await settle(30);
+    assert.equal(runtime.calls.ensure.length, 1);
+    assert.equal(runtime.calls.create.length, 3);
+    assert.ok(maxConcurrentCreates > 1, "独立したタスク作成を並列実行する");
+    assert.deepEqual(runtime.localData.__google_tasklist_map__, { "250": "single-list" });
+    assert.deepEqual(runtime.localData[PENDING_KEY], {});
+    assert.ok(runtime.localData["250"].tasks.every((task) => task.googleTaskListId === "single-list"));
   }
 
   // 無効時は現在の物理保存領域が変化してもAPIを呼ばない。
