@@ -99,6 +99,13 @@
         const lastError = changes["__drive_last_error__"].newValue;
         showToast(`Googleドライブ同期エラー: ${lastError.message || "不明なエラー"}`);
       }
+      if (changes["__google_tasks_synced_at__"] && typeof changes["__google_tasks_synced_at__"].newValue === "number") {
+        showToast("Google Tasksへ同期しました");
+      }
+      if (changes["__google_tasks_last_error__"] && changes["__google_tasks_last_error__"].newValue) {
+        const lastError = changes["__google_tasks_last_error__"].newValue;
+        showToast(`Google Tasks同期エラー: ${lastError.message || "不明なエラー"}`);
+      }
     }
 
     // 同じ授業が複数の日・時限に表示されていても、タスクだけを全箇所へ即時反映する。

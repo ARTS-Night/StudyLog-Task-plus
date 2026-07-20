@@ -1097,6 +1097,14 @@
       const lastError = changes["__drive_last_error__"].newValue;
       showStatus(`Googleドライブ同期エラー: ${lastError.message || "不明なエラー"}`, true);
     }
+    if (areaName === "local" && changes["__google_tasks_synced_at__"]
+      && typeof changes["__google_tasks_synced_at__"].newValue === "number") {
+      showStatus("Google Tasksへ同期しました", false);
+    }
+    if (areaName === "local" && changes["__google_tasks_last_error__"] && changes["__google_tasks_last_error__"].newValue) {
+      const lastError = changes["__google_tasks_last_error__"].newValue;
+      showStatus(`Google Tasks同期エラー: ${lastError.message || "不明なエラー"}`, true);
+    }
 
     if (areaName === "local" && changes[MODE_KEY]) {
       const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
