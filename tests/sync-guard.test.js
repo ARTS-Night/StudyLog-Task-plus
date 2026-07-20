@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const source = fs.readFileSync(path.join(__dirname, "..", "sync-guard.js"), "utf8");
+const source = fs.readFileSync(path.join(__dirname, "..", "src", "core", "sync-guard.js"), "utf8");
 const NOW = 1784300400000;
 
 function createRuntime() {

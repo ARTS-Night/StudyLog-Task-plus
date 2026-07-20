@@ -302,9 +302,9 @@ async function submitTask(text) {
 }
 
 async function main() {
-  vm.runInContext(fs.readFileSync("sync-guard.js", "utf8"), context, { filename: "sync-guard.js" });
-  vm.runInContext(fs.readFileSync("task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
-  vm.runInContext(fs.readFileSync("tasks.js", "utf8"), context, { filename: "tasks.js" });
+  vm.runInContext(fs.readFileSync("src/core/sync-guard.js", "utf8"), context, { filename: "sync-guard.js" });
+  vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/ui/tasks.js", "utf8"), context, { filename: "tasks.js" });
   await settle();
 
   assert.equal(elements.get("btn-add").disabled, false, "add must be enabled while sync waits");

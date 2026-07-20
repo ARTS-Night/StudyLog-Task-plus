@@ -6,8 +6,8 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const source = [
-  "service-worker-utils.js",
-  "drive-mirror-background.js"
+  "src/core/service-worker-utils.js",
+  "src/sync/drive/drive-mirror-background.js"
 ].map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 
 function settle(times = 20) {

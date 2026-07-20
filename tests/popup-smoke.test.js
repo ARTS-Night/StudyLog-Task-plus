@@ -338,8 +338,8 @@ async function main() {
     TaskMutationLock: immediateMutationLock
   });
 
-  vm.runInContext(fs.readFileSync("task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
-  vm.runInContext(fs.readFileSync("popup.js", "utf8"), context, { filename: "popup.js" });
+  vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/ui/popup.js", "utf8"), context, { filename: "popup.js" });
   await settle();
 
   const content = elements.get("content");

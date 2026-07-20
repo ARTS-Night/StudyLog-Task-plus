@@ -72,7 +72,7 @@ chrome.storage.sync.get(null, (d) => console.log(JSON.stringify(d, null, 2)))   
 chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  // ローカル領域
 ```
 
-キーは授業 ID（例: `10054`）で、値は `{ subject: 科目名, tasks: [{id, text, done, createdAt?, completedAt?}] }` です。`createdAt` は追加時刻、`completedAt` は完了操作時刻の Unix 時刻（ミリ秒）で、旧データでは存在しないことがあります。`__` で始まるキー（`__storage_mode__`, `__device__`, `__sync_check__`, `__sync_ready__`, `__class_catalog__`, `__class_catalog_home__`, `__class_catalog_attempt__`, `__pending_task_add__:<ID>`, `__completed_task_retention_days__`）は拡張機能の内部設定です。マイページの完全一覧とホームの補助一覧は別キーへ保存するため、複数タブで同時更新されても補助一覧が過去年度の完全一覧を巻き戻しません。初回同期中の未反映タスクも1件ずつ独立したキーへ保存します。`__sync_ready__` は「この端末で同期ダウンロードを確認した日時」で、確認から24時間はチェックを省略し、期限が切れると次にページやタスク一覧を開いたときに再チェックします（sync にデータがあれば一瞬で通過します）。未確認の間、授業ページとツールバーポップアップは同期データが届くまで（最大20秒）書き込みを待たせます。専用タスク画面だけは新規追加を端末内へ保留し、確認後に既存タスクへ ID で重複排除しながら追加します。画面を閉じる際は警告を試みますが、Chrome 全体の終了時には警告が省略される場合があるため、保留キュー自体を終了後も残すことでデータを保護します。旧形式の `__pending_task_adds__` が残っている場合も読み込み、反映後に削除します。ガードの実装は `sync-guard.js` にあります。
+キーは授業 ID（例: `10054`）で、値は `{ subject: 科目名, tasks: [{id, text, done, createdAt?, completedAt?}] }` です。`createdAt` は追加時刻、`completedAt` は完了操作時刻の Unix 時刻（ミリ秒）で、旧データでは存在しないことがあります。`__` で始まるキー（`__storage_mode__`, `__device__`, `__sync_check__`, `__sync_ready__`, `__class_catalog__`, `__class_catalog_home__`, `__class_catalog_attempt__`, `__pending_task_add__:<ID>`, `__completed_task_retention_days__`）は拡張機能の内部設定です。マイページの完全一覧とホームの補助一覧は別キーへ保存するため、複数タブで同時更新されても補助一覧が過去年度の完全一覧を巻き戻しません。初回同期中の未反映タスクも1件ずつ独立したキーへ保存します。`__sync_ready__` は「この端末で同期ダウンロードを確認した日時」で、確認から24時間はチェックを省略し、期限が切れると次にページやタスク一覧を開いたときに再チェックします（sync にデータがあれば一瞬で通過します）。未確認の間、授業ページとツールバーポップアップは同期データが届くまで（最大20秒）書き込みを待たせます。専用タスク画面だけは新規追加を端末内へ保留し、確認後に既存タスクへ ID で重複排除しながら追加します。画面を閉じる際は警告を試みますが、Chrome 全体の終了時には警告が省略される場合があるため、保留キュー自体を終了後も残すことでデータを保護します。旧形式の `__pending_task_adds__` が残っている場合も読み込み、反映後に削除します。ガードの実装は `src/core/sync-guard.js` にあります。
 
 ## 同期の条件とトラブルシューティング
 
@@ -99,14 +99,14 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 ## ファイル
 
 - `manifest.json`: Chrome 拡張機能の設定です。
-- `class-catalog.js`: ホームとマイページから年度・授業 ID・科目名を取得し、専用画面用の授業カタログを保存します。
-- `content.js`: ページにタスク管理ボタンとポップアップを追加する本体です。
-- `sync-guard.js`: 初回同期ガード（同期データが届くまで読み書きを待たせる共通処理）です。授業ページとツールバーポップアップの両方で使います。
-- `mutation-lock.js` / `mutation-lock-background.js`: 画面やiframeをまたぐ保存処理をFIFOで直列化する共通ロックとService Workerです。
-- `task-lifecycle.js`: 追加・完了日時の正規化と、完了後の自動削除を全画面で共通化します。
-- `popup.html` / `popup.js`: ツールバーアイコンをクリックしたときに表示される全タスク一覧です（完了/未完了の切り替えが可能）。
-- `tasks.html` / `tasks.js`: 年度・授業を選び、タスクの追加・編集・削除・完了切替を行う専用画面です。
-- `settings.html` / `settings.js`: 設定ページ（バックアップ・データ整理・使用量確認）です。
+- `src/lms/class-catalog.js`: ホームとマイページから年度・授業 ID・科目名を取得し、専用画面用の授業カタログを保存します。
+- `src/lms/content.js`: ページにタスク管理ボタンとポップアップを追加する本体です。
+- `src/core/sync-guard.js`: 初回同期ガード（同期データが届くまで読み書きを待たせる共通処理）です。授業ページとツールバーポップアップの両方で使います。
+- `src/core/mutation-lock.js` / `src/core/mutation-lock-background.js`: 画面やiframeをまたぐ保存処理をFIFOで直列化する共通ロックとService Workerです。
+- `src/core/task-lifecycle.js`: 追加・完了日時の正規化と、完了後の自動削除を全画面で共通化します。
+- `src/ui/popup.html` / `src/ui/popup.js`: ツールバーアイコンをクリックしたときに表示される全タスク一覧です（完了/未完了の切り替えが可能）。
+- `src/ui/tasks.html` / `src/ui/tasks.js`: 年度・授業を選び、タスクの追加・編集・削除・完了切替を行う専用画面です。
+- `src/ui/settings.html` / `src/ui/settings.js`: 設定ページ（バックアップ・データ整理・使用量確認）です。
 - `AGENTS.md`: Codex など次の AI が最初に読む、設計上の不変条件と作業手順です。
 - `tests/tasks-smoke.test.js`: 偽 DOM・偽 Chrome API 上で、初回同期中の即時追加・検索UI・保留キュー・追加/完了日時・旧形式互換・終了警告を確認するスモークテストです。
 - `tests/manifest-frames.test.js`: Tree Ivy の iframe 互換に必要な manifest 設定を静的に確認する契約テストです。
@@ -128,7 +128,7 @@ node tests/popup-smoke.test.js
 node tests/mutation-lock.test.js
 node tests/sync-guard.test.js
 node tests/task-lifecycle.test.js
-Get-ChildItem -File -Filter *.js | ForEach-Object { node --check $_.FullName }
+Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --check $_.FullName }
 ```
 
 これらはローカルのスモークテストと構文検査であり、実際の Chrome・スタログ・Chrome Sync を使った E2E テストではありません。リリース前には少なくとも次を実機で確認してください。

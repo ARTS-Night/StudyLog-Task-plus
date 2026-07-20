@@ -6,8 +6,8 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const source = [
-  "service-worker-utils.js",
-  "google-tasks-mirror-background.js"
+  "src/core/service-worker-utils.js",
+  "src/sync/google-tasks/google-tasks-mirror-background.js"
 ].map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const PENDING_KEY = "__google_tasks_pending_ops__";
 const ERROR_KEY = "__google_tasks_last_error__";

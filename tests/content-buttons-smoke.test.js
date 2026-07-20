@@ -320,8 +320,8 @@ async function settle(turns = 12) {
 }
 
 async function main() {
-  vm.runInContext(fs.readFileSync("task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
-  vm.runInContext(fs.readFileSync("content.js", "utf8"), context, { filename: "content.js" });
+  vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/lms/content.js", "utf8"), context, { filename: "content.js" });
   await settle(2);
 
   const buttons = document.querySelectorAll(".lms-memo-btn");

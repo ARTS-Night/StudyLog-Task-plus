@@ -117,12 +117,12 @@ function loadLock(runtime) {
   });
 
   vm.runInContext(
-    fs.readFileSync("mutation-lock-background.js", "utf8"),
+    fs.readFileSync("src/core/mutation-lock-background.js", "utf8"),
     context,
     { filename: "mutation-lock-background.js" }
   );
   vm.runInContext(
-    fs.readFileSync("mutation-lock.js", "utf8"),
+    fs.readFileSync("src/core/mutation-lock.js", "utf8"),
     context,
     { filename: "mutation-lock.js" }
   );

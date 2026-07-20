@@ -102,7 +102,7 @@ async function main() {
     }
   });
 
-  vm.runInContext(fs.readFileSync("task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
   const lifecycle = context.TaskLifecycle;
 
   // 未設定・不正値の保存先モードは必ず sync（既存ユーザーの同期データを見失わないための既定値）

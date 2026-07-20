@@ -10,11 +10,11 @@
   let refreshAfterMutation = false;
 
   document.getElementById("btn-settings").addEventListener("click", () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
+    chrome.tabs.create({ url: chrome.runtime.getURL("src/ui/settings.html") });
   });
 
   document.getElementById("btn-open-list").addEventListener("click", () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL("tasks.html") });
+    chrome.tabs.create({ url: chrome.runtime.getURL("src/ui/tasks.html") });
   });
 
   // 手動同期: ストレージから読み直して最新の同期データを表示する

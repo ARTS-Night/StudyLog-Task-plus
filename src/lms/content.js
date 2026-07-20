@@ -630,8 +630,8 @@
       nav.appendChild(item);
     };
 
-    addLink("lms-task-list-item", "tasks.html", "タスク一覧");
-    addLink("lms-task-settings-item", "settings.html", "タスク設定");
+    addLink("lms-task-list-item", "src/ui/tasks.html", "タスク一覧");
+    addLink("lms-task-settings-item", "src/ui/settings.html", "タスク設定");
   }
 
   function updateClassButtons(classId, rawValue) {

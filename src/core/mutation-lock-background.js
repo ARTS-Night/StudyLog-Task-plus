@@ -1,13 +1,13 @@
 "use strict";
 
 importScripts(
-  "task-lifecycle.js",
-  "service-worker-utils.js",
-  "google-auth.js",
-  "drive-sync.js",
-  "google-tasks-sync.js",
-  "drive-mirror-background.js",
-  "google-tasks-mirror-background.js"
+  "./task-lifecycle.js",
+  "./service-worker-utils.js",
+  "../sync/google-auth.js",
+  "../sync/drive/drive-sync.js",
+  "../sync/google-tasks/google-tasks-sync.js",
+  "../sync/drive/drive-mirror-background.js",
+  "../sync/google-tasks/google-tasks-mirror-background.js"
 );
 
 // content script と拡張機能ページは Web Locks の共有範囲が異なるため、

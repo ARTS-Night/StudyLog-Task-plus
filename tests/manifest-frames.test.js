@@ -9,7 +9,7 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const lmsMatch = "https://portal.iwasaki.ac.jp/lms/*";
 const scripts = manifest.content_scripts || [];
 
-const taskEntries = scripts.filter((entry) => entry.js && entry.js.includes("content.js"));
+const taskEntries = scripts.filter((entry) => entry.js && entry.js.includes("src/lms/content.js"));
 assert.equal(taskEntries.length, 1, "content.js の読み込み設定は1件に保つ");
 
 const taskEntry = taskEntries[0];
@@ -17,24 +17,24 @@ assert.ok(taskEntry.matches.includes(lmsMatch), "タスク UI は LMS 配下を�
 assert.equal(taskEntry.all_frames, true, "右サイド iframe にもタスク UI を読み込む");
 assert.deepEqual(
   taskEntry.js,
-  ["sync-guard.js", "mutation-lock.js", "task-lifecycle.js", "content.js"],
+  ["src/core/sync-guard.js", "src/core/mutation-lock.js", "src/core/task-lifecycle.js", "src/lms/content.js"],
   "同期ガード、共通変更ロック、タスク日時処理を content.js より先に読み込む"
 );
 
 assert.equal(
   manifest.background && manifest.background.service_worker,
-  "mutation-lock-background.js",
+  "src/core/mutation-lock-background.js",
   "全実行コンテキストの変更を直列化するService Workerを維持する"
 );
 
 [
-  ["popup.html", "popup.js"],
-  ["tasks.html", "tasks.js"],
-  ["settings.html", "settings.js"]
+  ["src/ui/popup.html", "popup.js"],
+  ["src/ui/tasks.html", "tasks.js"],
+  ["src/ui/settings.html", "settings.js"]
 ].forEach(([htmlFile, mainScript]) => {
   const html = fs.readFileSync(path.join(__dirname, "..", htmlFile), "utf8");
-  const lockIndex = html.indexOf('<script src="mutation-lock.js"></script>');
-  const lifecycleIndex = html.indexOf('<script src="task-lifecycle.js"></script>');
+  const lockIndex = html.indexOf('<script src="../core/mutation-lock.js"></script>');
+  const lifecycleIndex = html.indexOf('<script src="../core/task-lifecycle.js"></script>');
   const mainIndex = html.indexOf(`<script src="${mainScript}"></script>`);
   assert.ok(lockIndex >= 0 && lockIndex < mainIndex, `${htmlFile} は共通変更ロックを先に読み込む`);
   assert.ok(
@@ -43,7 +43,7 @@ assert.equal(
   );
 });
 
-const tasksHtml = fs.readFileSync(path.join(__dirname, "..", "tasks.html"), "utf8");
+const tasksHtml = fs.readFileSync(path.join(__dirname, "..", "src", "ui", "tasks.html"), "utf8");
 assert.match(
   tasksHtml,
   /<label for="task-search">タスクを検索<\/label>[\s\S]*<input id="task-search" type="search"[^>]*aria-controls="task-groups"/,
@@ -54,7 +54,7 @@ assert.match(
   /<select id="task-status-filter"[^>]*>[\s\S]*value="active">未完了[\s\S]*value="done">完了/,
   "専用画面は完了状態の絞り込みを持つ"
 );
-const settingsHtml = fs.readFileSync(path.join(__dirname, "..", "settings.html"), "utf8");
+const settingsHtml = fs.readFileSync(path.join(__dirname, "..", "src", "ui", "settings.html"), "utf8");
 assert.match(
   settingsHtml,
   /<select id="completed-retention-days"[^>]*>[\s\S]*value="0">自動削除しない[\s\S]*value="90">完了から90日後/,
@@ -67,7 +67,7 @@ assert.doesNotMatch(
 );
 
 const catalogEntries = scripts.filter((entry) =>
-  entry.matches.includes(lmsMatch) && entry.js && entry.js.includes("class-catalog.js")
+  entry.matches.includes(lmsMatch) && entry.js && entry.js.includes("src/lms/class-catalog.js")
 );
 assert.equal(catalogEntries.length, 1, "LMS の授業一覧取得設定は1件に保つ");
 assert.notEqual(
@@ -76,7 +76,7 @@ assert.notEqual(
   "授業一覧取得は各 iframe で重複実行しない"
 );
 assert.ok(
-  !taskEntry.js.includes("class-catalog.js"),
+  !taskEntry.js.includes("src/lms/class-catalog.js"),
   "全フレーム向け設定へ授業一覧取得処理を混在させない"
 );
 

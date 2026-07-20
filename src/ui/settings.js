@@ -95,7 +95,7 @@
   });
 
   document.getElementById("btn-open-tasks").addEventListener("click", () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL("tasks.html") });
+    chrome.tabs.create({ url: chrome.runtime.getURL("src/ui/tasks.html") });
   });
 
   // ---- 設定内検索 ----

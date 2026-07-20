@@ -200,7 +200,7 @@ const context = {
 context.window = context;
 context.window.top = context.window;
 context.window.location = { pathname: "/lms/", reload() {} };
-vm.runInNewContext(fs.readFileSync("content.js", "utf8"), context, { filename: "content.js" });
+vm.runInNewContext(fs.readFileSync("src/lms/content.js", "utf8"), context, { filename: "content.js" });
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 

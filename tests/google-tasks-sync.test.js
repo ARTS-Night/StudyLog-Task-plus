@@ -5,8 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const authSource = fs.readFileSync(path.join(__dirname, "..", "google-auth.js"), "utf8");
-const tasksSource = fs.readFileSync(path.join(__dirname, "..", "google-tasks-sync.js"), "utf8");
+const authSource = fs.readFileSync(path.join(__dirname, "..", "src", "sync", "google-auth.js"), "utf8");
+const tasksSource = fs.readFileSync(path.join(__dirname, "..", "src", "sync", "google-tasks", "google-tasks-sync.js"), "utf8");
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));

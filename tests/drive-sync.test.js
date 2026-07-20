@@ -5,8 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const authSource = fs.readFileSync(path.join(__dirname, "..", "google-auth.js"), "utf8");
-const driveSource = fs.readFileSync(path.join(__dirname, "..", "drive-sync.js"), "utf8");
+const authSource = fs.readFileSync(path.join(__dirname, "..", "src", "sync", "google-auth.js"), "utf8");
+const driveSource = fs.readFileSync(path.join(__dirname, "..", "src", "sync", "drive", "drive-sync.js"), "utf8");
 
 function jsonResponse(status, body) {
   return {
