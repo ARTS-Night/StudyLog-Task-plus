@@ -215,6 +215,12 @@
       display: none;
     }
 
+    .google-tasks-block {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #e6e6e6;
+    }
+
     .google-tasks-option {
       display: flex;
       align-items: flex-start;
@@ -486,9 +492,9 @@
   </section>
 
   <section>
-    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M6.6 10.61 9.05 6.4h5.9l2.45 4.21-2.95 5.11H9.55L6.6 10.61zM12 2 4.5 15l3.75 6.5h7.5L19.5 15 12 2z" opacity="0"/><path d="M7.71 3.5 1.15 15l3.28 5.68 6.56-11.36L7.71 3.5zM9.87 3.5l6.56 11.36h6.56L16.43 3.5H9.87zM8.79 16.36 5.5 22.04h13.13l3.28-5.68H8.79z"/></svg>Google ドライブ連携</h3>
+    <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M6.6 10.61 9.05 6.4h5.9l2.45 4.21-2.95 5.11H9.55L6.6 10.61zM12 2 4.5 15l3.75 6.5h7.5L19.5 15 12 2z" opacity="0"/><path d="M7.71 3.5 1.15 15l3.28 5.68 6.56-11.36L7.71 3.5zM9.87 3.5l6.56 11.36h6.56L16.43 3.5H9.87zM8.79 16.36 5.5 22.04h13.13l3.28-5.68H8.79z"/></svg>Google ドライブ / Google Tasks 連携</h3>
     <p>
-      「Google ドライブで共有」モードのログイン管理と、手動バックアップ・復元です。<br>
+      「Google ドライブで共有」モードのログイン管理、手動バックアップ・復元、Google Tasksへのタスク同期を、共通のGoogleログインでまとめて設定します。<br>
       データはマイドライブの「stalog_task_plus」フォルダ内の stalog-tasks.json に保存され、ドライブ画面からも確認できます。フォルダを消しても次の同期で作り直されます。
     </p>
     <div class="drive-card">
@@ -511,15 +517,17 @@
       <button id="btn-drive-login" class="primary"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M11 7 9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"/></svg>Googleでログイン</button>
       <button id="btn-drive-logout" hidden><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>ログアウト</button>
       <div id="drive-sync-buttons" hidden>
-        <label class="google-tasks-option">
-          <input id="google-tasks-sync-enabled" type="checkbox" disabled>
-          <span>タスクをGoogle Tasksにも同期する（授業ごとに自動でタスクリストを作成）</span>
-        </label>
-        <div id="google-tasks-substatus">まだ同期していません</div>
-        <div id="google-tasks-error" hidden></div>
         <button id="btn-drive-backup"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>ドライブへバックアップ</button>
         <button id="btn-drive-restore"><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>ドライブから復元</button>
       </div>
+    </div>
+    <div class="google-tasks-block">
+      <label class="google-tasks-option">
+        <input id="google-tasks-sync-enabled" type="checkbox" disabled>
+        <span>タスクをGoogle Tasksにも同期する（授業ごとに自動でタスクリストを作成）</span>
+      </label>
+      <div id="google-tasks-substatus">上のGoogleログインが必要です</div>
+      <div id="google-tasks-error" hidden></div>
     </div>
   </section>
   </div>
