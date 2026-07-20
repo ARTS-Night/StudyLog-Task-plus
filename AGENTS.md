@@ -239,6 +239,8 @@ node tests/sync-guard.test.js
 node tests/task-lifecycle.test.js
 node tests/drive-sync.test.js
 node tests/drive-mirror.test.js
+node tests/google-tasks-sync.test.js
+node tests/google-tasks-mirror.test.js
 Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --check $_.FullName }
 ```
 
@@ -252,6 +254,8 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 - `task-lifecycle.test.js` は完了日時、未完了化、再完了、自動削除の境界、保存先競合、旧形式を確認します。
 - `drive-sync.test.js` はappDataFolder上のファイル新規作成/更新の振り分け、未ログイン判定、401時のトークン破棄を偽`chrome.identity`/`fetch`で確認します。
 - `drive-mirror.test.js` はdriveモード時のデバウンスプッシュ、読込失敗時の中止、新旧スナップショットの取捨、dirtyガード、モード切替時の参加フロー、未ログイン時のスキップを確認します。
+- `google-tasks-sync.test.js` はタスクリストの作成/解決、タスクの作成・更新（未完了化時の`completed: null`送信を含む）・削除、404削除の成功扱いを偽`fetch`で確認します。
+- `google-tasks-mirror.test.js` は永続化された保留オペレーション（outbox）の再試行、授業ごとのタスクリスト解決の並行安全性（同時解決の一本化、解決中マップの安全な差し替え）、成功時のみのクリア、同一授業内タスクの並列プッシュを確認します。
 - いずれも実スタログや実Chrome Syncを使う E2E テストではありません。
 
 実機確認では、拡張機能を再読み込みした後にスタログのタブも再読み込みし、次を確認します。
@@ -263,6 +267,7 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 5. sync/local/drive の3モードと保存先切替が動作する。
 6. 授業カタログの背景更新が成功時だけタブを閉じ、失敗時は確認用タブを残す。
 7. drive モードでタスクを変更すると数秒後にGoogleドライブへ送信され、同じアカウントの別プロファイル・別端末では次のSW起床（起動・5分アラーム）で取り込まれる（OAuthクライアントID設定後）。
+8. 設定画面でGoogle Tasks連携を有効化すると、授業ごとにGoogle Tasksへタスクリストが作成され、追加・編集・完了・削除がGoogle Tasks側へ反映され、最終同期時刻が表示される（Google Tasks側の変更はStalogへ反映されない一方向）。
 
 ## Git・解析用ファイル・配布物
 
@@ -278,3 +283,5 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 - Chrome Sync の完了を直接検知する API がないため、同期ガードはデータ到着、変更通知、20秒タイムアウトを使うヒューリスティックです。
 - `beforeunload` の確認は Chrome 全体の終了時などに表示されない場合があります。保留タスクは local に残してデータを守ります。
 - 追加・完了日時と本文・授業名・状態の絞り込みは実装済みですが、提出期限、タグ、並び替え、独自バックエンドは未実装です。追加する場合は既存データの後方互換とUIの簡潔さを維持してください。
+- Google Tasks連携はStalog→Google Tasksの一方向プッシュのみで、Google Tasks側での編集・完了・削除はStalogへ読み戻しません。双方向化する場合は各タスクの由来（正本）を明確にする設計が必要です。
+- Google Tasks APIにはフォルダ階層がないため、「1授業＝1タスクリスト」というフラットな対応にしています。授業名変更時の追従や、統合ビューが必要な場合は別途設計してください。

@@ -2,7 +2,7 @@
 
 Chrome 上の表示名は「スタログ授業メモ」です。スタログのカレンダーや授業詳細ページへタスク管理機能を追加し、授業ごとの忘れ物や提出物をスタログ上で確認できます。
 
-保存先は既定で `chrome.storage.sync` です。同じ Google アカウントで Chrome の同期を有効にしていれば他のパソコンにも反映されます。設定から、同期を使わない `chrome.storage.local`（この端末のみ）へ切り替えることもできます。外部サーバーや Google API へ直接送信する機能はありません。
+保存先は既定で `chrome.storage.sync` です。同じ Google アカウントで Chrome の同期を有効にしていれば他のパソコンにも反映されます。設定から、同期を使わない `chrome.storage.local`（この端末のみ）や、Google ドライブへ保存する `drive` モードへ切り替えることもできます。また、設定ページで Google アカウントにログインすると、Google ドライブへのタスクバックアップ（双方向同期）と、Google Tasks への一方向連携（Stalog → Google Tasks のみ、逆方向の読み込みはしません）を個別にオン・オフできます。これらを使わない場合、外部サーバーや Google API へ送信されることはありません。
 
 > [!NOTE]
 > 岩崎学園のスタログ専用に作られた非公式の Chrome 拡張機能です。利用にはスタログへログインできるアカウントが必要です。
@@ -38,7 +38,9 @@ Tree Ivy Replanted を併用する場合も、右サイドで開いた授業ペ�
 - 授業ページ、専用画面、ツールバーポップアップ、設定画面から同時に変更しても、拡張機能内の共通キューで保存処理を順番に実行し、同じ端末内の読み書き競合を防ぎます。
 - 設定ページの「同期チェック」で、同期が正しく動いているかを確認できます。各パソコンで「この端末の印を残す」を押し、別のパソコンの設定ページにその印が表示されれば同期は正常です。
 - `manifest.json` に `key` を固定してあるため、どのパソコンで読み込んでも拡張機能 ID が同じになり、`chrome.storage.sync` の同期が機能します（`key` を消したり変えたりすると ID が変わり、同期されなくなるので注意）。
-- 設定ページの「保存先」で、Google アカウントで同期（`chrome.storage.sync`・他のパソコンと共有、上限約100KB）と、この端末のみ（`chrome.storage.local`・ローカル保存、上限約10MB）を切り替えられます。切り替え時には現在のタスクが新しい保存先へ自動的にコピーされます（元の保存先のデータはバックアップとして残ります）。この設定は端末ごとに保持されます。
+- 設定ページの「保存先」で、Google アカウントで同期（`chrome.storage.sync`・他のパソコンと共有、上限約100KB）、この端末のみ（`chrome.storage.local`・ローカル保存、上限約10MB）、Google ドライブ（`drive`・Google アカウントへログインして双方向同期）の3つを切り替えられます。切り替え時には現在のタスクが新しい保存先へ自動的にコピーされます（元の保存先のデータはバックアップとして残ります）。この設定は端末ごとに保持されます。
+- 設定ページで Google アカウントにログインすると、Google ドライブ上の `stalog_task_plus` フォルダ内 `stalog-tasks.json` へタスクを保存・取得できます（drive モード時）。これとは別に、Google Tasks への連携を個別にオン・オフでき、有効にすると授業ごとに Google Tasks のタスクリストが作成され、タスクの追加・編集・完了・削除が Google Tasks へ反映されます（Stalog → Google Tasks の一方向で、Google Tasks 側の変更は読み込みません）。最終同期時刻が設定ページに表示されます。
+- ホーム画面のお知らせ下には、全授業のタスクを追加日の古い順にまとめた一覧が表示され、未完了/完了の切り替えタブと、その場での完了切り替え・編集ができます。
 - 授業詳細ページ（`/lms/class/<ID>`）では、ポップアップではなくページ内に「マイタスク」パネルが埋め込まれ、その場でタスクの一覧・追加・編集・完了ができます。
 - Tree Ivy の右サイド表示で開いた授業ページにも「マイタスク」パネルを表示します。Tree Ivy は授業ページを iframe で開くため、タスク UI だけを全フレームへ読み込み、授業一覧の取得処理は親ページだけで実行します。
 - アイコンは Google Fonts の Material Symbols デザインを SVG として埋め込んでいます。
@@ -55,10 +57,12 @@ Tree Ivy Replanted を併用する場合も、右サイドで開いた授業ペ�
 | --- | --- | --- |
 | タスク（同期モード時） | `chrome.storage.sync` | Chrome プロファイル内の LevelDB + Google アカウント（Chrome 同期サーバー） |
 | タスク（ローカルモード時） | `chrome.storage.local` | Chrome プロファイル内の LevelDB（この端末のみ） |
+| タスク（drive モード時） | `chrome.storage.local` + Google ドライブ | この端末のLevelDBに加え、ログインした Google アカウントの `stalog_task_plus` フォルダ内 `stalog-tasks.json` |
 | 保存先モード・端末名 | `chrome.storage.local` | 同上（端末ごと。同期されない） |
 | 年度別の授業カタログ（完全一覧・ホーム補助一覧） | `chrome.storage.local` | 同上（端末ごと。マイページから再取得可能） |
 | 初回同期中に追加した保留タスク | `chrome.storage.local` | 同上（同期確認後に選択中の保存先へ移して削除） |
 | 同期チェックの「印」 | `chrome.storage.sync` | タスク（同期モード時）と同じ |
+| Google Tasks 連携の有効設定・最終同期時刻・タスクリスト対応表・再試行待ちの操作 | `chrome.storage.local` | 同上（端末ごと。有効化した授業のタスクは Google Tasks 側にも作成される） |
 
 Windows でのファイルの実体（プロファイルが `Default` の場合）:
 
@@ -104,6 +108,10 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 - `src/core/sync-guard.js`: 初回同期ガード（同期データが届くまで読み書きを待たせる共通処理）です。授業ページとツールバーポップアップの両方で使います。
 - `src/core/mutation-lock.js` / `src/core/mutation-lock-background.js`: 画面やiframeをまたぐ保存処理をFIFOで直列化する共通ロックとService Workerです。
 - `src/core/task-lifecycle.js`: 追加・完了日時の正規化と、完了後の自動削除を全画面で共通化します。
+- `src/core/service-worker-utils.js`: Service Worker 内の共通ストレージ操作・排他実行ヘルパーです。
+- `src/sync/google-auth.js`: Google OAuth のトークン取得・破棄・再認可を Drive/Google Tasks 連携で共有します。
+- `src/sync/drive/drive-sync.js` / `src/sync/drive/drive-mirror-background.js`: Google ドライブとの双方向同期（appDataFolder 相当のファイル読み書きとバックグラウンド反映）です。
+- `src/sync/google-tasks/google-tasks-sync.js` / `src/sync/google-tasks/google-tasks-mirror-background.js`: Google Tasks への一方向プッシュ（タスクリスト作成、作成・更新・削除の永続化された再試行キュー）です。
 - `src/ui/popup.html` / `src/ui/popup.js`: ツールバーアイコンをクリックしたときに表示される全タスク一覧です（完了/未完了の切り替えが可能）。
 - `src/ui/tasks.html` / `src/ui/tasks.js`: 年度・授業を選び、タスクの追加・編集・削除・完了切替を行う専用画面です。
 - `src/ui/settings.html` / `src/ui/settings.js`: 設定ページ（バックアップ・データ整理・使用量確認）です。
@@ -115,6 +123,10 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 - `tests/mutation-lock.test.js`: 共通変更キューのFIFO、heartbeat、例外・切断後の解放を確認します。
 - `tests/sync-guard.test.js`: 初回同期通知、空データのtimeout、localモードを確認します。
 - `tests/task-lifecycle.test.js`: 完了日時と完了後自動削除の期限境界・保存先競合・旧形式保護を確認します。
+- `tests/drive-sync.test.js`: Google ドライブ上のファイル新規作成/更新の振り分け、未ログイン判定、401時のトークン破棄を確認します。
+- `tests/drive-mirror.test.js`: drive モードのデバウンスプッシュ、読込失敗時の中止、新旧スナップショットの取捨、モード切替時の参加フローを確認します。
+- `tests/google-tasks-sync.test.js`: Google Tasks のタスクリスト作成、タスクの作成・更新・削除、404削除の成功扱いを確認します。
+- `tests/google-tasks-mirror.test.js`: 保留オペレーションの永続化・再試行、授業ごとのタスクリスト解決の並行安全性、同一授業内タスクの並列プッシュを確認します。
 
 ## 開発と検証
 
@@ -128,6 +140,10 @@ node tests/popup-smoke.test.js
 node tests/mutation-lock.test.js
 node tests/sync-guard.test.js
 node tests/task-lifecycle.test.js
+node tests/drive-sync.test.js
+node tests/drive-mirror.test.js
+node tests/google-tasks-sync.test.js
+node tests/google-tasks-mirror.test.js
 Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --check $_.FullName }
 ```
 
@@ -137,7 +153,9 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 - 通常の授業詳細ページと Tree Ivy の右サイド表示で「マイタスク」が1個だけ表示される。
 - タスクの追加・編集・完了・削除と追加日・完了日が、ポップアップと専用画面へ反映される。
 - 専用画面のタスク検索・状態絞り込み・クリアと、設定ページの自動削除日数の保存が動作する。
-- sync/local の保存先切替、初回同期待ち、授業一覧の背景更新がエラーなく完了する。
+- sync/local/drive の保存先切替、初回同期待ち、授業一覧の背景更新がエラーなく完了する。
+- ホームのお知らせ下のタスク一覧が古い順に表示され、未完了/完了タブと完了切り替えが動作する。
+- drive モードでタスクを変更すると Google ドライブへ反映され、Google Tasks 連携を有効にすると授業ごとのタスクリストへ反映される（OAuth クライアント ID 設定後）。
 
 配布用の `StudyLog-Task-plus.zip` は追跡済みですが、自動生成ではありません。リリースを作るときだけ、`manifest.json` のバージョンと同梱ファイルを確認して更新してください。保存したスタログHTMLや Tree Ivy の参照コピーは `.gitignore` 対象であり、配布物には含めません。
 
