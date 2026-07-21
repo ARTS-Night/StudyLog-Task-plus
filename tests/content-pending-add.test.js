@@ -198,7 +198,9 @@ const chrome = {
       },
       set(items, callback) {
         if (failSyncSetForClassId && Object.hasOwn(items, failSyncSetForClassId)) {
-          failSyncSetForClassId = null;
+          // 一時的な障害ではなく恒久的な失敗を再現する（このテストが確認したいのは、
+          // 失敗が続く授業がリトライのたびに残りの授業を巻き添えにしないこと、
+          // 保留タスクがUI上で消えたように見えないことの2点）。
           chrome.runtime.lastError = { message: "simulated write failure" };
           queueMicrotask(() => {
             if (callback) callback();
@@ -271,7 +273,16 @@ const context = vm.createContext({
   SyncGuard,
   window: { innerHeight: 800, innerWidth: 1200, location: { reload() {} } }
 });
-context.TaskMutationLock = { request: (callback) => Promise.resolve().then(callback) };
+// 実装同様、複数のrequest()呼び出しを1本のFIFOへ直列化する（並行フラッシュを許すと
+// テストが実運用と異なる挙動を検証してしまうため、フェイクでも直列化を再現する）。
+let mutationChain = Promise.resolve();
+context.TaskMutationLock = {
+  request(callback) {
+    const result = mutationChain.then(callback);
+    mutationChain = result.catch(() => {});
+    return result;
+  }
+};
 
 function click(element) {
   assert.ok(element, "the element to click must exist");

@@ -1459,6 +1459,12 @@
           .then(() => {
             pendingTasks = pendingTasks.concat([item]);
             renderList();
+            // 保存中にちょうど同期確認が完了していた場合、ページ読み込み時の
+            // 一回限りのflushだけでは今書いたキーを取りこぼす恐れがあるため、
+            // 念のためもう一度flushの機会を作る（既に確認済みなら即座に走る）。
+            SyncGuard.when(() => {
+              pendingAddsFlushed = flushPendingAdds();
+            });
           })
           .catch((error) => {
             showToast(`タスクを端末に保留できませんでした: ${error.message}`);

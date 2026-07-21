@@ -127,7 +127,7 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 - `tests/drive-sync.test.js`: Google ドライブ上のファイル新規作成/更新の振り分け、未ログイン判定、401時のトークン破棄を確認します。
 - `tests/drive-mirror.test.js`: drive モードのデバウンスプッシュ、読込失敗時の中止、新旧スナップショットの取捨、モード切替時の参加フローを確認します。
 - `tests/google-tasks-sync.test.js`: Google Tasks のタスクリスト作成、タスクの作成・更新・削除、404削除の成功扱いを確認します。
-- `tests/google-tasks-mirror.test.js`: 保留オペレーションの永続化・再試行、授業ごとのタスクリスト解決の並行安全性、同一授業内タスクの並列プッシュを確認します。
+- `tests/google-tasks-mirror.test.js`: 保留オペレーションの永続化・再試行、授業ごとのタスクリスト解決の並行安全性、同一授業内タスクの並列プッシュ、同期無効中に削除されたタスクのゴースト整理、並列送信時の部分失敗でエラー表示を誤って消さないことを確認します。
 
 ## 開発と検証
 

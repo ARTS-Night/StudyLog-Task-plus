@@ -433,6 +433,98 @@ async function main() {
     assert.equal(runtime.localData[PENDING_KEY]["900:t1"].done, true);
   }
 
+  // 同期無効中にローカル削除されたタスクの保留操作（既にリモート作成済み）は、
+  // 書き戻し先が無いために失敗し続けるのではなく、リモートのゴーストを片付けて破棄する。
+  {
+    const pending = {
+      "1000:t1": {
+        type: "create",
+        classId: "1000",
+        taskId: "t1",
+        subject: "家庭科",
+        text: "調理実習",
+        done: false,
+        googleTaskListId: "list-家庭科",
+        googleTaskId: "google-orphan"
+      }
+    };
+    const runtime = createRuntime({
+      local: {
+        __storage_mode__: "local",
+        __google_tasks_sync_enabled__: true,
+        [PENDING_KEY]: pending
+        // "1000" キー自体が無い = 同期無効中にローカルでタスクが削除された状態
+      }
+    });
+    await settle();
+    assert.equal(runtime.calls.create.length, 0, "IDが既に揃っているため再作成しない");
+    assert.deepEqual(
+      runtime.calls.delete,
+      [{ listId: "list-家庭科", taskId: "google-orphan" }],
+      "書き戻し先が無い操作は、作成済みのリモートタスクを片付ける"
+    );
+    assert.deepEqual(runtime.localData[PENDING_KEY], {}, "破棄済みの操作をoutboxに残さない");
+    assert.equal(runtime.localData[ERROR_KEY], undefined, "ゴースト整理を失敗として記録しない");
+
+    runtime.triggerAlarm();
+    await settle();
+    assert.equal(runtime.calls.delete.length, 1, "破棄済みの操作は再試行で繰り返されない（無限リトライにならない）");
+  }
+
+  // 上のゴースト整理自体でリモート削除が失敗しても、outboxは破棄する（無限リトライより優先）。
+  {
+    const pending = {
+      "1050:t1": {
+        type: "update",
+        classId: "1050",
+        taskId: "t1",
+        subject: "家庭科",
+        text: "調理実習2",
+        done: false,
+        googleTaskListId: "list-家庭科2",
+        googleTaskId: "google-orphan2"
+      }
+    };
+    const runtime = createRuntime({
+      local: {
+        __storage_mode__: "local",
+        __google_tasks_sync_enabled__: true,
+        [PENDING_KEY]: pending
+      },
+      api: { deleteTask: async () => { throw new Error("cleanup unreachable"); } }
+    });
+    await settle();
+    assert.deepEqual(runtime.localData[PENDING_KEY], {}, "リモート片付けの失敗でも破棄自体は完了する");
+  }
+
+  // 並列送信中に1件が恒久的に失敗しても、別の1件の成功でエラー表示を消してはいけない。
+  {
+    const runtime = createRuntime({
+      local: { __storage_mode__: "local", __google_tasks_sync_enabled__: true },
+      api: {
+        createTask: async (listId, title) => {
+          if (title === "失敗するタスク") throw new Error("permanent failure");
+          return `google-${title}`;
+        }
+      }
+    });
+    runtime.change("local", "1100", {
+      subject: "技術",
+      tasks: [
+        { id: "ok", text: "成功するタスク", done: false },
+        { id: "ng", text: "失敗するタスク", done: false }
+      ]
+    });
+    await settle();
+    assert.ok(runtime.localData[ERROR_KEY], "1件でも失敗が残っていればエラー表示を消さない");
+    assert.equal(Object.keys(runtime.localData[PENDING_KEY]).length, 1, "失敗した操作だけがoutboxに残る");
+    assert.equal(
+      runtime.localData["1100"].tasks.find((task) => task.id === "ok").googleTaskId,
+      "google-成功するタスク",
+      "同時に成功した操作はそのまま反映される"
+    );
+  }
+
   console.log("google tasks mirror test passed");
 }
 

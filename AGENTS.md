@@ -60,7 +60,7 @@
 | `tests/drive-sync.test.js` | appDataFolderへの新規作成/更新の振り分け、401時のトークン破棄を確認するテスト |
 | `tests/drive-mirror.test.js` | driveモード時のみデバウンスしてプッシュすること、内部キー無視、未ログイン時のスキップを確認するテスト |
 | `tests/google-tasks-sync.test.js` | Google Tasksのリスト検索・作成、タスク追加・更新・削除のAPI契約を確認するテスト |
-| `tests/google-tasks-mirror.test.js` | Google Tasksへの差分送信、永続outboxとアラーム再試行、同一授業の並列追加でタスクリストを重複作成しないこと、競合安全なID書き戻し、404自己修復を確認するテスト |
+| `tests/google-tasks-mirror.test.js` | Google Tasksへの差分送信、永続outboxとアラーム再試行、同一授業の並列追加でタスクリストを重複作成しないこと、競合安全なID書き戻し、404自己修復、同期無効中に削除されたタスクのゴースト整理、並列送信時の部分失敗でエラー表示を誤って消さないことを確認するテスト |
 | `344赤池璃月＿企画書.md` / `344赤池璃月_研究資料.md` | ユーザーの研究文書。明示依頼なしに改稿しない |
 | `StudyLog-Task-plus.zip` | 追跡済みの配布物。リリース依頼なしに再生成・ステージしない |
 
@@ -258,7 +258,7 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 - `drive-sync.test.js` はappDataFolder上のファイル新規作成/更新の振り分け、未ログイン判定、401時のトークン破棄を偽`chrome.identity`/`fetch`で確認します。
 - `drive-mirror.test.js` はdriveモード時のデバウンスプッシュ、読込失敗時の中止、新旧スナップショットの取捨、dirtyガード、モード切替時の参加フロー、未ログイン時のスキップを確認します。
 - `google-tasks-sync.test.js` はタスクリストの作成/解決、タスクの作成・更新（未完了化時の`completed: null`送信を含む）・削除、404削除の成功扱いを偽`fetch`で確認します。
-- `google-tasks-mirror.test.js` は永続化された保留オペレーション（outbox）の再試行、授業ごとのタスクリスト解決の並行安全性（同時解決の一本化、解決中マップの安全な差し替え）、成功時のみのクリア、同一授業内タスクの並列プッシュを確認します。
+- `google-tasks-mirror.test.js` は永続化された保留オペレーション（outbox）の再試行、授業ごとのタスクリスト解決の並行安全性（同時解決の一本化、解決中マップの安全な差し替え）、成功時のみのクリア、同一授業内タスクの並列プッシュ、同期無効中に削除されたタスクのゴースト整理（無限リトライにならないこと）、並列送信中の部分失敗でエラー表示を誤って消さないことを確認します。
 - いずれも実スタログや実Chrome Syncを使う E2E テストではありません。
 
 実機確認では、拡張機能を再読み込みした後にスタログのタブも再読み込みし、次を確認します。

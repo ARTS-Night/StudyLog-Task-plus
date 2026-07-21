@@ -90,14 +90,18 @@
   }
 
   async function completeOperation(operation) {
-    // エラー表示を先に消す。outbox と同期時刻の保存に失敗した場合は pending が残り、
-    // 次回再試行で成功状態を確定できる。
-    await markSuccess();
+    // エラー表示はoutbox全体が空になったときだけ消す。並列実行中の他タスクがまだ
+    // 失敗を記録している間に、1件の成功だけでエラー表示を消してしまわないようにする。
+    let stillPending = true;
     await updatePendingOps((pending) => {
       delete pending[operationKey(operation)];
+      stillPending = Object.keys(pending).length > 0;
     }, {
       [SYNCED_AT_KEY]: Date.now()
     });
+    if (!stillPending) {
+      await markSuccess();
+    }
   }
 
   async function loadListMap() {
@@ -179,9 +183,17 @@
       const area = chrome.storage[areaName];
       const latest = await storageGet(area, [classId]);
       const entry = latest[classId];
-      if (!entry || !Array.isArray(entry.tasks)) throw new Error("Google Tasks IDの書き戻し先が見つかりませんでした");
+      if (!entry || !Array.isArray(entry.tasks)) {
+        const error = new Error("Google Tasks IDの書き戻し先が見つかりませんでした");
+        error.taskGone = true;
+        throw error;
+      }
       const index = entry.tasks.findIndex((task) => task && task.id === taskId);
-      if (index < 0) throw new Error("Google Tasks IDの書き戻し先タスクが見つかりませんでした");
+      if (index < 0) {
+        const error = new Error("Google Tasks IDの書き戻し先タスクが見つかりませんでした");
+        error.taskGone = true;
+        throw error;
+      }
 
       const tasks = entry.tasks.slice();
       tasks[index] = { ...tasks[index], googleTaskListId, googleTaskId };
@@ -199,6 +211,16 @@
     return new Map(tasks.filter((task) => task && validId(task.id)).map((task) => [task.id, task]));
   }
 
+  // 同期を無効にしていた間にローカルで削除されたタスクの保留操作は、書き戻し先が無い
+  // ため attachGoogleIds が taskGone で失敗し続ける（無限リトライ）。作成済みのリモート
+  // タスクを片付けたうえで操作自体を破棄し、ゴーストと無限リトライの両方を防ぐ。
+  async function discardIfTaskGone(error, classId, taskId, googleTaskListId, googleTaskId) {
+    if (!error.taskGone) return false;
+    await GoogleTasksSync.deleteTask(googleTaskListId, googleTaskId).catch(() => {});
+    await discardOperation(classId, taskId);
+    return true;
+  }
+
   async function processCreate(operation) {
     let current = operation;
     if (!validId(current.googleTaskListId) || !validId(current.googleTaskId)) {
@@ -211,7 +233,14 @@
       };
       await persistOperation(current);
     }
-    await attachGoogleIds(current.classId, current.taskId, current.googleTaskListId, current.googleTaskId);
+    try {
+      await attachGoogleIds(current.classId, current.taskId, current.googleTaskListId, current.googleTaskId);
+    } catch (error) {
+      if (await discardIfTaskGone(error, current.classId, current.taskId, current.googleTaskListId, current.googleTaskId)) {
+        return;
+      }
+      throw error;
+    }
     await completeOperation(current);
   }
 
@@ -231,6 +260,9 @@
       );
       await completeOperation(operation);
     } catch (error) {
+      if (await discardIfTaskGone(error, operation.classId, operation.taskId, operation.googleTaskListId, operation.googleTaskId)) {
+        return;
+      }
       if (errorStatus(error) !== 404) throw error;
 
       // 消えたリスト上の古い taskId は新しいリストでは使えないため、最新のローカル内容で
@@ -256,12 +288,19 @@
         googleTaskId: replacementTaskId
       };
       await persistOperation(attachOnly);
-      await attachGoogleIds(
-        attachOnly.classId,
-        attachOnly.taskId,
-        attachOnly.googleTaskListId,
-        attachOnly.googleTaskId
-      );
+      try {
+        await attachGoogleIds(
+          attachOnly.classId,
+          attachOnly.taskId,
+          attachOnly.googleTaskListId,
+          attachOnly.googleTaskId
+        );
+      } catch (innerError) {
+        if (await discardIfTaskGone(innerError, attachOnly.classId, attachOnly.taskId, attachOnly.googleTaskListId, attachOnly.googleTaskId)) {
+          return;
+        }
+        throw innerError;
+      }
       await completeOperation(attachOnly);
     }
   }
