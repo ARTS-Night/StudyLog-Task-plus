@@ -11,8 +11,14 @@
   // 保存先モード（設定ページで切り替え）: "sync" = Google アカウントで同期 / "local" = この端末のみ
   const MODE_KEY = "__storage_mode__";
   const CLASS_LOCK_PREFIX = "stalog-task-class:";
+  // 専用タスク画面 (tasks.js) の保留タスクと同じキー形式。互換して同時に使っても壊れない。
+  const PENDING_ADD_PREFIX = "__pending_task_add__:";
+  const PENDING_ADDS_LEGACY_KEY = "__pending_task_adds__";
   let storage = chrome.storage.sync;
   let storageMode = "sync";
+  // 初回同期の確認前に追加された保留タスクを、確認後にまとめて反映した完了合図。
+  // 各ポップアップはこれを待ってから実データを読み直し、反映前の空データを読まないようにする。
+  let pendingAddsFlushed = Promise.resolve();
 
   function getCurrentTaskStorage() {
     return new Promise((resolve, reject) => {
@@ -26,6 +32,151 @@
           ? chrome.storage.local
           : chrome.storage.sync);
       });
+    });
+  }
+
+  function storageGet(area, keys) {
+    return new Promise((resolve, reject) => {
+      area.get(keys, (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(result || {});
+      });
+    });
+  }
+
+  function storageSet(area, items) {
+    return new Promise((resolve, reject) => {
+      area.set(items, () => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  function storageRemove(area, keys) {
+    return new Promise((resolve, reject) => {
+      area.remove(keys, () => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  function normalizePendingAdd(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const id = typeof value.id === "string" ? value.id.trim() : "";
+    const classId = typeof value.classId === "string" || typeof value.classId === "number"
+      ? String(value.classId).trim() : "";
+    const text = typeof value.text === "string" ? value.text.trim() : "";
+    if (!id || !/^\d+$/.test(classId) || !text) return null;
+    const subject = typeof value.subject === "string" ? value.subject.trim() : "";
+    const createdAt = TaskLifecycle.normalizeTimestamp(value.createdAt);
+    return { id, classId, subject, text, createdAt };
+  }
+
+  async function readAllPendingAdds() {
+    const items = await storageGet(chrome.storage.local, null);
+    const fromKeys = Object.entries(items)
+      .filter(([key]) => key.startsWith(PENDING_ADD_PREFIX))
+      .map(([key, value]) => {
+        const normalized = normalizePendingAdd(value);
+        return normalized && key === `${PENDING_ADD_PREFIX}${normalized.id}` ? normalized : null;
+      })
+      .filter(Boolean);
+    const legacy = Array.isArray(items[PENDING_ADDS_LEGACY_KEY])
+      ? items[PENDING_ADDS_LEGACY_KEY].map(normalizePendingAdd).filter(Boolean)
+      : [];
+    const seen = new Set();
+    return [...fromKeys, ...legacy].filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }
+
+  async function readPendingAddsForClass(targetClassId) {
+    const all = await readAllPendingAdds();
+    return all.filter((item) => item.classId === String(targetClassId));
+  }
+
+  function appendPendingAdd(item) {
+    return storageSet(chrome.storage.local, { [`${PENDING_ADD_PREFIX}${item.id}`]: item });
+  }
+
+  async function removePendingAddIds(ids) {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const result = await storageGet(chrome.storage.local, [PENDING_ADDS_LEGACY_KEY]);
+    const legacyNext = (Array.isArray(result[PENDING_ADDS_LEGACY_KEY]) ? result[PENDING_ADDS_LEGACY_KEY] : [])
+      .map(normalizePendingAdd)
+      .filter((item) => item && !idSet.has(item.id));
+    if (legacyNext.length > 0) {
+      await storageSet(chrome.storage.local, { [PENDING_ADDS_LEGACY_KEY]: legacyNext });
+    } else {
+      await storageRemove(chrome.storage.local, [PENDING_ADDS_LEGACY_KEY]);
+    }
+    await storageRemove(chrome.storage.local, ids.map((id) => `${PENDING_ADD_PREFIX}${id}`));
+  }
+
+  // 初回同期の確認後にまとめて実データへ反映する。授業ごとに TaskMutationLock 経由で
+  // ロックし、他の保存処理と交錯しないようにする。
+  function flushPendingAdds() {
+    return TaskMutationLock.request(async () => {
+      const mutationStorage = await getCurrentTaskStorage();
+      const all = await readAllPendingAdds();
+      if (all.length === 0) return;
+
+      const byClass = new Map();
+      all.forEach((item) => {
+        if (!byClass.has(item.classId)) byClass.set(item.classId, []);
+        byClass.get(item.classId).push(item);
+      });
+
+      for (const [targetClassId, additions] of byClass) {
+        const run = async () => {
+          const result = await storageGet(mutationStorage, [targetClassId]);
+          const latest = normalizeEntry(result[targetClassId], targetClassId);
+          additions.forEach((item) => {
+            const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
+            if (existingIndex >= 0) {
+              // 旧版で「本体保存成功・保留削除失敗」になった場合、保留側にだけ
+              // 残っている正確な追加日時を復旧してから保留キーを削除する。
+              if (!TaskLifecycle.normalizeTimestamp(latest.tasks[existingIndex].createdAt) && item.createdAt) {
+                latest.tasks[existingIndex] = { ...latest.tasks[existingIndex], createdAt: item.createdAt };
+              }
+              return;
+            }
+            const task = { id: item.id, text: item.text, done: false };
+            if (item.createdAt) task.createdAt = item.createdAt;
+            latest.tasks.push(task);
+          });
+          const subject = latest.subject || additions[0].subject || "";
+          await storageSet(mutationStorage, { [targetClassId]: { subject, tasks: latest.tasks } });
+        };
+        try {
+          if (navigator.locks && typeof navigator.locks.request === "function") {
+            await navigator.locks.request(`${CLASS_LOCK_PREFIX}${targetClassId}`, { mode: "exclusive" }, run);
+          } else {
+            await run();
+          }
+          await removePendingAddIds(additions.map((item) => item.id));
+        } catch (error) {
+          // 1授業の反映失敗で他授業の保留分まで止めない。失敗分はキューへ残し、
+          // 次回の初回同期確認（次のページ表示）で再試行する。
+          console.warn(`授業${targetClassId}の保留タスクを反映できませんでした`, error);
+        }
+      }
+    }).catch((error) => {
+      console.warn("保留タスクの反映に失敗しました", error);
     });
   }
 
@@ -55,6 +206,10 @@
     }
 
     SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
+    // 確認前に追加された保留タスクを、確認後すぐにまとめて実データへ反映する。
+    SyncGuard.when(() => {
+      pendingAddsFlushed = flushPendingAdds();
+    });
 
     addStyle();
     addMemoButtons();
@@ -264,6 +419,22 @@
         flex: 0 0 auto;
         width: 16px;
         height: 16px;
+      }
+
+      .lms-task-item.lms-task-pending {
+        justify-content: space-between;
+        color: #777;
+      }
+
+      .lms-task-pending-badge {
+        flex: 0 0 auto;
+        font-size: 11px;
+        font-weight: 700;
+        color: #8a6d00;
+        background: #fff3d6;
+        border-radius: 4px;
+        padding: 2px 6px;
+        white-space: nowrap;
       }
 
       .lms-task-text {
@@ -936,6 +1107,8 @@
     const onTasksChanged = options.onTasksChanged || function () {};
 
     let tasks = [];
+    // 初回同期の確認が終わるまでの間、この授業について追加済みの保留タスク（表示専用）
+    let pendingTasks = [];
     let editingTaskId = null;
 
     const body = document.createElement("div");
@@ -977,28 +1150,39 @@
     buttonsRow.appendChild(addButton);
     body.append(listEl, form, buttonsRow);
 
-    // 初回同期が終わるまではタスクを読み込まず、追加もできないようにする
-    // （空のリストで保存してサーバー上のデータを上書きしないため）
+    // 初回同期の確認が終わるまでは既存一覧を読み込まない（空データで上書きしないため）が、
+    // 新規追加は保留キューに積むだけなので確認前でも即座にでき、追加ボタンは無効化しない。
     if (!SyncGuard.isReady()) {
-      addButton.disabled = true;
-      const waiting = document.createElement("li");
-      waiting.className = "lms-task-empty";
-      waiting.textContent = "同期データを確認中です…（最大20秒ほどかかります）";
-      listEl.appendChild(waiting);
+      readPendingAddsForClass(classId).then((items) => {
+        pendingTasks = items;
+        renderList();
+      });
     }
 
     SyncGuard.when(() => {
-      addButton.disabled = false;
-      storage.get([classId], (result) => {
-        if (chrome.runtime.lastError || !result) {
+      // 確認直後は保留タスクの実データへの反映がまだ途中の可能性があるため、
+      // その完了を待ってから読み直す（反映前の空データを読んでしまうのを防ぐ）。
+      pendingAddsFlushed.then(() => new Promise((resolve) => {
+        storage.get([classId], (result) => {
+          if (chrome.runtime.lastError || !result) {
+            resolve({ error: chrome.runtime.lastError });
+            return;
+          }
+          resolve({ tasks: normalizeEntry(result[classId], classId).tasks });
+        });
+      })).then(async (loaded) => {
+        if (loaded.error) {
           listEl.innerHTML = "";
           const failed = document.createElement("li");
           failed.className = "lms-task-empty";
-          failed.textContent = `タスクを読み込めませんでした${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`;
+          failed.textContent = `タスクを読み込めませんでした: ${loaded.error.message}`;
           listEl.appendChild(failed);
           return;
         }
-        tasks = normalizeEntry(result[classId], classId).tasks;
+        tasks = loaded.tasks;
+        // flush が失敗していた場合に備え、この授業でまだ未反映の保留タスクがあれば
+        // 「消えた」ように見せず引き続き保留表示にする。
+        pendingTasks = await readPendingAddsForClass(classId).catch(() => []);
         renderList();
       });
     });
@@ -1034,10 +1218,25 @@
     function renderList() {
       listEl.innerHTML = "";
 
-      if (tasks.length === 0) {
+      pendingTasks.forEach((item) => {
+        const pendingItem = document.createElement("li");
+        pendingItem.className = "lms-task-item lms-task-pending";
+        const text = document.createElement("span");
+        text.className = "lms-task-text";
+        text.textContent = item.text;
+        const badge = document.createElement("span");
+        badge.className = "lms-task-pending-badge";
+        badge.textContent = "同期後に保存";
+        pendingItem.append(text, badge);
+        listEl.appendChild(pendingItem);
+      });
+
+      if (tasks.length === 0 && pendingTasks.length === 0) {
         const empty = document.createElement("li");
         empty.className = "lms-task-empty";
-        empty.textContent = "タスクはまだありません。";
+        empty.textContent = SyncGuard.isReady()
+          ? "タスクはまだありません。"
+          : "同期データを確認中です…（追加はすぐにできます）";
         listEl.appendChild(empty);
         return;
       }
@@ -1241,6 +1440,29 @@
 
       if (text === "") {
         closeForm();
+        return;
+      }
+
+      // 初回同期の確認前は既存一覧を読み込んでいない（tasks は常に空）ため、
+      // ここに来るのは常に新規追加。保留キューへ積むだけにして、実データの
+      // 読み書きは確認後の flushPendingAdds に任せる。
+      if (!editingTaskId && !SyncGuard.isReady()) {
+        const item = {
+          id: TaskLifecycle.createTaskId(),
+          classId: String(classId),
+          subject: subjectName && subjectName !== "不明な授業" ? subjectName : "",
+          text,
+          createdAt: Date.now()
+        };
+        closeForm();
+        appendPendingAdd(item)
+          .then(() => {
+            pendingTasks = pendingTasks.concat([item]);
+            renderList();
+          })
+          .catch((error) => {
+            showToast(`タスクを端末に保留できませんでした: ${error.message}`);
+          });
         return;
       }
 

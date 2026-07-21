@@ -51,6 +51,7 @@
 | `tests/tasks-smoke.test.js` | 初回同期、保留反映、追加日時、旧形式を確認するランタイムスモークテスト |
 | `tests/manifest-frames.test.js` | Tree Ivy iframe 互換を守る manifest 契約テスト |
 | `tests/content-buttons-smoke.test.js` | 同一授業IDの複数ボタンを一括更新するランタイムスモークテスト |
+| `tests/content-pending-add.test.js` | 授業ページ/ホームのポップアップで、初回同期確認前の新規追加が保留表示され、確認後に既存データを失わずマージされること、1授業の反映失敗が他授業を巻き添えにしないことを確認するテスト |
 | `tests/home-task-widget-smoke.test.js` | ホームの全授業タスク一覧の集約・並び順・絞り込み・競合安全な完了切替を確認するスモークテスト |
 | `tests/popup-smoke.test.js` | 同期ガード、外部変更反映、旧形式の完了切替を確認するテスト |
 | `tests/mutation-lock.test.js` | 実行コンテキスト横断の変更キューと異常切断を確認するテスト |
@@ -232,6 +233,7 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 node tests/tasks-smoke.test.js
 node tests/manifest-frames.test.js
 node tests/content-buttons-smoke.test.js
+node tests/content-pending-add.test.js
 node tests/home-task-widget-smoke.test.js
 node tests/popup-smoke.test.js
 node tests/mutation-lock.test.js
@@ -247,6 +249,7 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 - `tasks-smoke.test.js` は偽DOM・偽Chrome API上で、初回同期待ち、保留追加、タスク検索、追加・完了日時、旧形式、終了警告を確認します。
 - `manifest-frames.test.js` は content script の分離と `all_frames` を静的検査します。
 - `content-buttons-smoke.test.js` は同じ授業IDの複数ボタンと追加日時の保持を偽DOM上で確認します。
+- `content-pending-add.test.js` は初回同期の確認前でも新規タスクの追加ボタンが無効化されず即座に保留表示されること、確認後に他端末の既存データを失わずマージされること、1授業の反映失敗が他授業の反映まで止めないこと、失敗した保留タスクがUI上で消えたように見えないことを確認します。
 - `home-task-widget-smoke.test.js` はホームの全授業タスク一覧について、複数授業の集約、追加日順、未完了・完了の絞り込み、同時追加を失わない完了切替を偽DOM・偽Chrome API上で確認します。
 - `popup-smoke.test.js` は同期待ち中の書込み禁止、変更通知の再描画、IDなし旧タスクの識別を確認します。
 - `mutation-lock.test.js` はService WorkerのFIFO変更キュー、heartbeat、例外・切断後の解放を確認します。

@@ -837,35 +837,51 @@
             byClass.get(item.classId).push(item);
           });
 
+          let flushedCount = 0;
+          let failedClasses = 0;
           for (const [classId, additions] of byClass) {
-            await withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
-              const result = await storageGet(mutationStorage, [classId]);
-              const latest = normalizeEntry(result[classId], classId);
-              additions.forEach((item) => {
-                const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
-                const createdAt = TaskLifecycle.normalizeTimestamp(item.createdAt);
-                if (existingIndex >= 0) {
-                  // 旧版で「本体保存成功・保留削除失敗」になった場合、保留側にだけ
-                  // 残っている正確な追加日時を復旧してから保留キーを削除する。
-                  if (!TaskLifecycle.normalizeTimestamp(latest.tasks[existingIndex].createdAt) && createdAt) {
-                    latest.tasks[existingIndex] = { ...latest.tasks[existingIndex], createdAt };
+            try {
+              await withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
+                const result = await storageGet(mutationStorage, [classId]);
+                const latest = normalizeEntry(result[classId], classId);
+                additions.forEach((item) => {
+                  const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
+                  const createdAt = TaskLifecycle.normalizeTimestamp(item.createdAt);
+                  if (existingIndex >= 0) {
+                    // 旧版で「本体保存成功・保留削除失敗」になった場合、保留側にだけ
+                    // 残っている正確な追加日時を復旧してから保留キーを削除する。
+                    if (!TaskLifecycle.normalizeTimestamp(latest.tasks[existingIndex].createdAt) && createdAt) {
+                      latest.tasks[existingIndex] = { ...latest.tasks[existingIndex], createdAt };
+                    }
+                    return;
                   }
-                  return;
-                }
-                const task = { id: item.id, text: item.text, done: false };
-                if (createdAt) task.createdAt = createdAt;
-                latest.tasks.push(task);
+                  const task = { id: item.id, text: item.text, done: false };
+                  if (createdAt) task.createdAt = createdAt;
+                  latest.tasks.push(task);
+                });
+                const subject = latest.subject || additions[0].subject || "";
+                await storageSet(mutationStorage, { [classId]: { subject, tasks: latest.tasks } });
               });
-              const subject = latest.subject || additions[0].subject || "";
-              await storageSet(mutationStorage, { [classId]: { subject, tasks: latest.tasks } });
-            });
-            await removePendingAddIds(additions.map((item) => item.id));
+              await removePendingAddIds(additions.map((item) => item.id));
+              flushedCount += additions.length;
+            } catch (error) {
+              // 1授業の反映失敗で他授業の保留分まで止めない。失敗分はキューへ残し、次回また試す。
+              failedClasses += 1;
+              console.warn(`授業${classId}の保留タスクを反映できませんでした`, error);
+            }
           }
 
-          completed = true;
+          completed = failedClasses === 0;
           await loadAll({ silent: true, preserveYear: true });
-          showStatus(`${snapshot.length}件のタスクを同期データへ保存しました`, false);
-          return true;
+          if (flushedCount > 0) {
+            showStatus(
+              failedClasses === 0
+                ? `${flushedCount}件のタスクを同期データへ保存しました`
+                : `${flushedCount}件を保存しました（一部は失敗したため保留のままです）`,
+              failedClasses > 0
+            );
+          }
+          return completed;
         })
       );
     } catch (error) {
