@@ -417,6 +417,50 @@
     }
   }
 
+  // 連携を有効にした時点で既にある授業のタスクは自動では送られない（有効化後の変更だけが
+  // 差分送信の対象のため）。設定ページの手動ボタンから、まだリンクの無いタスクだけを
+  // まとめて送信キューへ積む。persistAndAttempt は内部で失敗を記録して例外を投げないため、
+  // 1件の失敗が他のタスクの送信を止めることはない。
+  async function backfillAllClasses() {
+    const flags = await storageGet(chrome.storage.local, [MODE_KEY, ENABLED_KEY]);
+    if (flags[ENABLED_KEY] !== true) {
+      throw new Error("Google Tasks同期が無効です");
+    }
+    const areaName = TaskLifecycle.physicalStorageMode(flags[MODE_KEY]);
+    const area = chrome.storage[areaName];
+    const all = await storageGet(area, null);
+
+    const actions = [];
+    Object.entries(all).forEach(([classId, value]) => {
+      if (!isNumericKey(classId)) return;
+      const subject = value && typeof value.subject === "string" ? value.subject : "";
+      const tasks = value && Array.isArray(value.tasks) ? value.tasks : [];
+      tasks.forEach((task) => {
+        if (!task || !validId(task.id)) return;
+        if (validId(task.googleTaskListId) && validId(task.googleTaskId)) return;
+        actions.push(() => persistAndAttempt({
+          type: "create",
+          classId,
+          taskId: task.id,
+          subject,
+          text: typeof task.text === "string" ? task.text : "",
+          done: task.done === true
+        }));
+      });
+    });
+
+    if (actions.length > 0) await Promise.all(actions.map((action) => action()));
+    return { queued: actions.length };
+  }
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || message.type !== "google-tasks-backfill") return undefined;
+    backfillAllClasses()
+      .then((result) => sendResponse({ ok: true, queued: result.queued }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  });
+
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (applying || (areaName !== "local" && areaName !== "sync")) return;
     if (!Object.keys(changes).some(isNumericKey)) return;

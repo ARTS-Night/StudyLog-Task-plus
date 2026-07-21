@@ -202,6 +202,7 @@
   const googleTasksCheckbox = document.getElementById("google-tasks-sync-enabled");
   const googleTasksSubstatus = document.getElementById("google-tasks-substatus");
   const googleTasksError = document.getElementById("google-tasks-error");
+  const googleTasksBackfillButton = document.getElementById("btn-google-tasks-backfill");
 
   function renderSyncError(element, label, lastError) {
     if (lastError && typeof lastError.message === "string" && lastError.message !== "") {
@@ -236,6 +237,7 @@
         driveError.hidden = true;
         googleTasksSubstatus.textContent = "上のGoogleログインが必要です";
         googleTasksError.hidden = true;
+        googleTasksBackfillButton.hidden = true;
         return;
       }
       Promise.all([
@@ -259,6 +261,7 @@
           : "まだ同期していません";
         renderDriveError(stored[DRIVE_LAST_ERROR_KEY]);
         googleTasksCheckbox.checked = stored[GOOGLE_TASKS_ENABLED_KEY] === true;
+        googleTasksBackfillButton.hidden = !googleTasksCheckbox.checked;
         const googleTasksSyncedAt = stored[GOOGLE_TASKS_SYNCED_AT_KEY];
         googleTasksSubstatus.textContent = typeof googleTasksSyncedAt === "number" && googleTasksSyncedAt > 0
           ? `最終同期: ${new Date(googleTasksSyncedAt).toLocaleString("ja-JP")}`
@@ -308,6 +311,7 @@
       }))
       .then(() => {
         showStatus(enabling ? "Google Tasks同期をオンにしました" : "Google Tasks同期をオフにしました");
+        googleTasksBackfillButton.hidden = !enabling;
       })
       .catch((error) => {
         googleTasksCheckbox.checked = !enabling;
@@ -316,6 +320,27 @@
       .finally(() => {
         googleTasksCheckbox.disabled = false;
       });
+  });
+
+  googleTasksBackfillButton.addEventListener("click", () => {
+    googleTasksBackfillButton.disabled = true;
+    showStatus("既存タスクをGoogle Tasksへ送信しています…");
+    chrome.runtime.sendMessage({ type: "google-tasks-backfill" }, (response) => {
+      googleTasksBackfillButton.disabled = false;
+      if (chrome.runtime.lastError) {
+        showStatus(`既存タスクの同期を開始できませんでした: ${chrome.runtime.lastError.message}`);
+        return;
+      }
+      if (!response || !response.ok) {
+        showStatus(`既存タスクの同期に失敗しました: ${response ? response.error : "不明なエラー"}`);
+        return;
+      }
+      showStatus(
+        response.queued > 0
+          ? `${response.queued}件の既存タスクをGoogle Tasksへ送信キューへ積みました`
+          : "未送信の既存タスクはありませんでした"
+      );
+    });
   });
 
   driveBackupButton.addEventListener("click", () => {

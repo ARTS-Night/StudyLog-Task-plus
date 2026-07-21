@@ -29,6 +29,7 @@ function createRuntime({ local = {}, sync = {}, api = {}, failSet } = {}) {
   const syncData = clone(sync);
   const storageListeners = [];
   const alarmListeners = [];
+  const messageListeners = [];
   const alarms = [];
   const calls = { ensure: [], create: [], update: [], delete: [] };
   let setAttempt = 0;
@@ -38,7 +39,10 @@ function createRuntime({ local = {}, sync = {}, api = {}, failSet } = {}) {
   }
 
   const chrome = {
-    runtime: { lastError: null },
+    runtime: {
+      lastError: null,
+      onMessage: { addListener(listener) { messageListeners.push(listener); } }
+    },
     storage: {
       local: null,
       sync: null,
@@ -143,7 +147,21 @@ function createRuntime({ local = {}, sync = {}, api = {}, failSet } = {}) {
     alarmListeners.forEach((listener) => listener({ name }));
   }
 
-  return { localData, syncData, calls, alarms, change, triggerAlarm };
+  function sendMessage(message) {
+    return new Promise((resolve) => {
+      let asyncHandled = false;
+      for (const listener of messageListeners) {
+        const handled = listener(message, {}, (response) => resolve(response));
+        if (handled === true) {
+          asyncHandled = true;
+          break;
+        }
+      }
+      if (!asyncHandled) resolve(undefined);
+    });
+  }
+
+  return { localData, syncData, calls, alarms, change, triggerAlarm, sendMessage };
 }
 
 async function settle(rounds = 20) {
@@ -523,6 +541,62 @@ async function main() {
       "google-成功するタスク",
       "同時に成功した操作はそのまま反映される"
     );
+  }
+
+  // 設定ページの手動バックフィルは、まだリンクの無い既存タスクだけを送信キューへ積む。
+  {
+    const runtime = createRuntime({
+      local: {
+        __storage_mode__: "local",
+        __google_tasks_sync_enabled__: true,
+        "1200": {
+          subject: "国語",
+          tasks: [
+            { id: "unlinked", text: "既にあったタスク", done: false },
+            linkedTask("linked", "既にリンク済み", false, "list-国語", "google-linked")
+          ]
+        },
+        "1201": { subject: "数学", tasks: [{ id: "unlinked2", text: "別授業の既存タスク", done: true }] }
+      },
+      api: { createTask: async (listId, title) => `google-${title}` }
+    });
+    await settle();
+    runtime.calls.create.length = 0;
+    runtime.calls.ensure.length = 0;
+
+    const response = await runtime.sendMessage({ type: "google-tasks-backfill" });
+    await settle();
+
+    assert.equal(response.ok, true);
+    assert.equal(response.queued, 2, "リンク済みタスクは対象から除く");
+    assert.deepEqual(
+      runtime.calls.create.map((call) => call.title).sort(),
+      ["既にあったタスク", "別授業の既存タスク"].sort()
+    );
+    assert.equal(
+      runtime.localData["1200"].tasks.find((task) => task.id === "unlinked").googleTaskId,
+      "google-既にあったタスク"
+    );
+    assert.equal(
+      runtime.localData["1200"].tasks.find((task) => task.id === "linked").googleTaskId,
+      "google-linked",
+      "既存のリンクを上書きしない"
+    );
+    assert.equal(
+      runtime.localData["1201"].tasks.find((task) => task.id === "unlinked2").googleTaskId,
+      "google-別授業の既存タスク"
+    );
+    assert.deepEqual(runtime.localData[PENDING_KEY], {});
+  }
+
+  // 連携が無効な間はバックフィルを拒否する。
+  {
+    const runtime = createRuntime({
+      local: { __storage_mode__: "local", "1300": { subject: "理科", tasks: [{ id: "t1", text: "未送信", done: false }] } }
+    });
+    const response = await runtime.sendMessage({ type: "google-tasks-backfill" });
+    assert.equal(response.ok, false);
+    assert.equal(runtime.calls.create.length, 0);
   }
 
   console.log("google tasks mirror test passed");
