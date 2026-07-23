@@ -168,3 +168,5 @@ Codex 用のリポジトリ指示ファイルは `.agent` ではなく、ルー�
 ## 対象サイト
 
 この拡張機能は `https://portal.iwasaki.ac.jp/lms/` 配下と、年度別授業一覧を取得するマイページ `https://portal.iwasaki.ac.jp/portal/lmsinc/sMyPage.php` で動作します。対象サイトを変更する場合は、`manifest.json` の `content_scripts` の `matches` と `web_accessible_resources` の `matches` を変更してください。
+
+-
