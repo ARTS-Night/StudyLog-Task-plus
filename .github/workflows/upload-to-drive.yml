@@ -11,45 +11,123 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. リポジトリのチェックアウト
+      # 1. リポジトリのチェックアウト（変更検知のため全履歴を取得）
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # 2. Python 環境のセットアップ
+      # 2. 今回の push で何が変わったかを判定する。
+      #    ZIP 対象（src/image/README.md/manifest.json）に変更が無い push では
+      #    ZIP を作らず、Markdown 個別アップロードも変更があったものだけに絞る。
+      - name: Determine changed files
+        id: changes
+        run: |
+          git config core.quotepath false
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "手動実行のため、全対象を処理します"
+            echo "zip_changed=true" >> "$GITHUB_OUTPUT"
+            echo "readme_changed=true" >> "$GITHUB_OUTPUT"
+            echo "proposal_changed=true" >> "$GITHUB_OUTPUT"
+            echo "research_changed=true" >> "$GITHUB_OUTPUT"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.event.after }}"
+
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # 新規ブランチ作成時など、差分の基準が取れない場合は安全側に倒して全対象を処理する
+            echo "差分の基準コミットが無いため、全対象を処理します"
+            CHANGED=$(git ls-files)
+          else
+            CHANGED=$(git diff --name-only "$BEFORE" "$AFTER")
+          fi
+
+          echo "変更されたファイル:"
+          echo "$CHANGED"
+
+          zip_changed=false
+          readme_changed=false
+          proposal_changed=false
+          research_changed=false
+
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              src/*|image/*|README.md|manifest.json) zip_changed=true ;;
+            esac
+            case "$file" in
+              README.md) readme_changed=true ;;
+            esac
+            case "$file" in
+              "344赤池璃月＿企画書.md") proposal_changed=true ;;
+            esac
+            case "$file" in
+              "344赤池璃月_研究資料.md") research_changed=true ;;
+            esac
+          done <<< "$CHANGED"
+
+          should_run=false
+          if [ "$zip_changed" = true ] || [ "$readme_changed" = true ] \
+            || [ "$proposal_changed" = true ] || [ "$research_changed" = true ]; then
+            should_run=true
+          fi
+
+          {
+            echo "zip_changed=$zip_changed"
+            echo "readme_changed=$readme_changed"
+            echo "proposal_changed=$proposal_changed"
+            echo "research_changed=$research_changed"
+            echo "should_run=$should_run"
+          } >> "$GITHUB_OUTPUT"
+
+      # 3. Python 環境のセットアップ（アップロード対象が無ければスキップ）
       - name: Set up Python
+        if: steps.changes.outputs.should_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
-      # 3. Google 公式 API ライブラリのインストール
+      # 4. Google 公式 API ライブラリのインストール
       #    OAuth ユーザー認証（refresh token）の検証・更新には google-auth だけで足り、
       #    google-auth-oauthlib はローカルでの初回同意フロー専用なので CI 側では不要。
       - name: Install Google API client
+        if: steps.changes.outputs.should_run == 'true'
         run: |
           pip install --no-cache-dir google-api-python-client google-auth
 
-      # 4. ZIP ファイルの作成
+      # 5. ZIP ファイルの作成（ZIP 対象に変更があるときだけ）
       - name: Create ZIP archive
+        if: steps.changes.outputs.zip_changed == 'true'
         run: |
           DATE=$(date +'%Y%m%d')
           VERSION=${GITHUB_SHA:0:7}
           TARGETS="src image README.md manifest.json" # まとめたいフォルダやファイル
           ZIP_NAME="archive_${DATE}_${VERSION}.zip"
-          
+
           zip -r9 "$ZIP_NAME" $TARGETS
           # 後続の Python スクリプトにファイル名を渡すため環境変数にセット
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
-      # 5. ZIP のアップロード ＆ 個別 Markdown ファイルの直接アップロード（同名なら上書き）
+      # 6. ZIP のアップロード ＆ 個別 Markdown ファイルの直接アップロード（同名なら上書き）
       #    サービスアカウントには保存容量が割り当てられておらず、フォルダを共有しても
       #    storageQuotaExceeded で失敗するため、実際の Google ユーザーとして認証する
       #    OAuth（refresh token）方式を使う。
+      #    ZIP・各Markdownとも、今回の push で変更があったものだけをアップロードする。
       - name: Upload Files to Google Drive via Official API
+        if: steps.changes.outputs.should_run == 'true'
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          ZIP_CHANGED: ${{ steps.changes.outputs.zip_changed }}
+          README_CHANGED: ${{ steps.changes.outputs.readme_changed }}
+          PROPOSAL_CHANGED: ${{ steps.changes.outputs.proposal_changed }}
+          RESEARCH_CHANGED: ${{ steps.changes.outputs.research_changed }}
         run: |
           python - << 'EOF'
           import os
@@ -73,14 +151,17 @@ jobs:
           client_secret = required_env('GDRIVE_CLIENT_SECRET')
           refresh_token = required_env('GDRIVE_REFRESH_TOKEN')
           folder_id = required_env('GDRIVE_FOLDER_ID')
-          zip_file_name = os.environ['ZIP_NAME'].strip()
+          zip_changed = os.environ.get('ZIP_CHANGED', 'false') == 'true'
+          zip_file_name = os.environ.get('ZIP_NAME', '').strip()
 
-          # ★直接配置＆上書きしたいマークダウンファイル群（ここを自由に増やせます！）
-          MD_FILES = [
-              'README.md',
-              '344赤池璃月＿企画書.md',
-              '344赤池璃月_研究資料.md' #md ファイル名（必要に応じて書き換えてください）
-          ]
+          # ★直接配置＆上書きしたいマークダウンファイル群と、今回変更されたかどうかのフラグ
+          # （ここを自由に増やせます。増やす場合は workflow 側の変更判定にも対応するcaseを追加してください）
+          MD_FILES = ['README.md', '344赤池璃月＿企画書.md', '344赤池璃月_研究資料.md']
+          MD_CHANGED = {
+              'README.md': os.environ.get('README_CHANGED', 'false') == 'true',
+              '344赤池璃月＿企画書.md': os.environ.get('PROPOSAL_CHANGED', 'false') == 'true',
+              '344赤池璃月_研究資料.md': os.environ.get('RESEARCH_CHANGED', 'false') == 'true',
+          }
 
           # 2. 認証情報の作成（実際の Google ユーザーとして、refresh token からアクセストークンを取得）
           creds = Credentials(
@@ -116,28 +197,35 @@ jobs:
               raise error
 
           # ----------------------------------------------------
-          # 処理 A: ZIP ファイルの新規アップロード
+          # 処理 A: ZIP ファイルの新規アップロード（ZIP 対象に変更があるときだけ）
           # ----------------------------------------------------
-          print(f"=== Uploading ZIP Archive: {zip_file_name} ===")
-          zip_metadata = {'name': zip_file_name, 'parents': [folder_id]}
-          zip_media = MediaFileUpload(zip_file_name, mimetype='application/zip', resumable=True)
+          if zip_changed:
+              print(f"=== Uploading ZIP Archive: {zip_file_name} ===")
+              zip_metadata = {'name': zip_file_name, 'parents': [folder_id]}
+              zip_media = MediaFileUpload(zip_file_name, mimetype='application/zip', resumable=True)
 
-          try:
-              uploaded_zip = service.files().create(
-                  body=zip_metadata,
-                  media_body=zip_media,
-                  fields='id, name',
-                  supportsAllDrives=True
-              ).execute()
-          except HttpError as error:
-              die_with_permission_hint(error, folder_id)
-          print(f"Successfully uploaded ZIP! File ID: {uploaded_zip.get('id')}\n")
+              try:
+                  uploaded_zip = service.files().create(
+                      body=zip_metadata,
+                      media_body=zip_media,
+                      fields='id, name',
+                      supportsAllDrives=True
+                  ).execute()
+              except HttpError as error:
+                  die_with_permission_hint(error, folder_id)
+              print(f"Successfully uploaded ZIP! File ID: {uploaded_zip.get('id')}\n")
+          else:
+              print("ZIP対象（src/image/README.md/manifest.json）に変更が無いため、ZIPアップロードをスキップします。\n")
 
           # ----------------------------------------------------
-          # 処理 B: Markdown ファイルの個別アップロード（既存があれば上書き）
+          # 処理 B: Markdown ファイルの個別アップロード（今回変更があったものだけ、既存があれば上書き）
           # ----------------------------------------------------
           print("=== Uploading / Updating Markdown Files ===")
           for file_path in MD_FILES:
+              if not MD_CHANGED.get(file_path, False):
+                  print(f"Skipping '{file_path}': 今回の変更に含まれていません。")
+                  continue
+
               if not os.path.exists(file_path):
                   print(f"Skipping '{file_path}': File not found on repository.")
                   continue

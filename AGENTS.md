@@ -284,6 +284,7 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 - `.github/workflows/upload-to-drive.yml` は `main` への push（または手動実行）のたびに、`src`・`image`・`README.md`・`manifest.json` を1つの ZIP（`archive_<日付>_<コミットSHA先頭7桁>.zip`）にまとめて Google Drive へ新規アップロードするワークフローです。バージョン履歴として毎回別ファイルを残す設計で、上書き・削除は行いません。加えて `README.md` と研究文書2件（`344赤池璃月＿企画書.md` / `344赤池璃月_研究資料.md`）は同名なら上書き更新する形で個別にもアップロードします（研究文書はアップロードするだけで、改稿はしません）。
   - 認証は Google 公式の `google-api-python-client` / `google-auth` を使う **OAuth ユーザー認証（refresh token）方式**です（Secrets: `GDRIVE_CLIENT_ID` / `GDRIVE_CLIENT_SECRET` / `GDRIVE_REFRESH_TOKEN` / `GDRIVE_FOLDER_ID`）。サービスアカウント方式は保存容量が割り当てられておらず、対象フォルダを共有していても `storageQuotaExceeded`（403）で失敗するため採用していません。`GDRIVE_REFRESH_TOKEN` はローカルで一度だけ `InstalledAppFlow` によるOAuth同意フローを実行して取得した、実際のGoogleユーザーアカウントのものです。フォルダIDが誤っている、または認証したアカウントがそのフォルダへアクセスできない場合は 404（`File not found`）になります。
   - すべての Drive API 呼び出しに `supportsAllDrives=True` を付け、共有ドライブ配下のフォルダでも動作するようにしています。各 Secret は前後の空白・改行を除去してから使用し、未設定・空の場合は分かりやすいエラーで即座に停止します。
+  - ZIPを無駄に増やさないよう、`Determine changed files` ステップが `git diff --name-only`（`github.event.before`〜`github.event.after`、`fetch-depth: 0`で取得）で今回の push の変更ファイルを調べ、ZIP対象（`src/`・`image/`・`README.md`・`manifest.json`）に変更が無ければ ZIP 作成・アップロードを丸ごとスキップします。Markdown個別アップロードも `README.md` / 研究文書2件それぞれ、変更があったものだけを対象にします。差分の基準コミットが取れない場合（新規ブランチ作成時など）と `workflow_dispatch` の手動実行時は、安全側に倒して全対象を処理します。
 
 ## 既知の制約と今後の候補
 
