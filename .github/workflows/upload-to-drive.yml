@@ -46,16 +46,22 @@ jobs:
         run: |
           python - << 'EOF'
           import os
+          import sys
           import json
           import mimetypes
           from google.oauth2.service_account import Credentials
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaFileUpload
+          from googleapiclient.errors import HttpError
 
-          # 1. 環境変数のセットアップ
+          # 1. 環境変数のセットアップ（secret に混入しがちな前後の空白・改行を除去）
           sa_info = json.loads(os.environ['GDRIVE_SA_KEY'])
-          folder_id = os.environ['GDRIVE_FOLDER_ID']
-          zip_file_name = os.environ['ZIP_NAME']
+          folder_id = os.environ['GDRIVE_FOLDER_ID'].strip()
+          zip_file_name = os.environ['ZIP_NAME'].strip()
+
+          if not folder_id:
+              print("エラー: GDRIVE_FOLDER_ID が空です。リポジトリの Secrets を確認してください。")
+              sys.exit(1)
 
           # ★直接配置＆上書きしたいマークダウンファイル群（ここを自由に増やせます！）
           MD_FILES = [
@@ -70,6 +76,20 @@ jobs:
               scopes=['https://www.googleapis.com/auth/drive.file']
           )
           service = build('drive', 'v3', credentials=creds)
+          service_account_email = sa_info.get('client_email', '(不明)')
+          print(f"サービスアカウント: {service_account_email}")
+
+          def die_with_permission_hint(error, folder_id):
+              # サービスアカウントは対象フォルダを共有されていないと 404 (File not found) を返す。
+              # 403 ではなく 404 になるのは、権限が無いことを教えないための Drive API の仕様。
+              if isinstance(error, HttpError) and error.resp is not None and error.resp.status == 404:
+                  print(
+                      f"エラー: フォルダ (ID: {folder_id}) が見つかりません。\n"
+                      f"多くの場合、Google Drive 上でこのフォルダを "
+                      f"サービスアカウント（{service_account_email}）に「編集者」として共有していないことが原因です。\n"
+                      "フォルダを共有するか、GDRIVE_FOLDER_ID の値が正しいか確認してください。"
+                  )
+              raise error
 
           # ----------------------------------------------------
           # 処理 A: ZIP ファイルの新規アップロード
@@ -77,12 +97,16 @@ jobs:
           print(f"=== Uploading ZIP Archive: {zip_file_name} ===")
           zip_metadata = {'name': zip_file_name, 'parents': [folder_id]}
           zip_media = MediaFileUpload(zip_file_name, mimetype='application/zip', resumable=True)
-          
-          uploaded_zip = service.files().create(
-              body=zip_metadata,
-              media_body=zip_media,
-              fields='id, name'
-          ).execute()
+
+          try:
+              uploaded_zip = service.files().create(
+                  body=zip_metadata,
+                  media_body=zip_media,
+                  fields='id, name',
+                  supportsAllDrives=True
+              ).execute()
+          except HttpError as error:
+              die_with_permission_hint(error, folder_id)
           print(f"Successfully uploaded ZIP! File ID: {uploaded_zip.get('id')}\n")
 
           # ----------------------------------------------------
@@ -101,30 +125,43 @@ jobs:
 
               # 既存の同名ファイルがあるか Google Drive 内を検索
               query = f"'{folder_id}' in parents and name = '{file_name}' and trashed = false"
-              results = service.files().list(q=query, fields="files(id, name)").execute()
+              try:
+                  results = service.files().list(
+                      q=query,
+                      fields="files(id, name)",
+                      supportsAllDrives=True,
+                      includeItemsFromAllDrives=True
+                  ).execute()
+              except HttpError as error:
+                  die_with_permission_hint(error, folder_id)
               existing_files = results.get('files', [])
 
               media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
 
-              if existing_files:
-                  # 同名ファイルが存在すれば ID を指定して内容を「上書き更新」
-                  file_id = existing_files[0]['id']
-                  print(f"Overwriting existing file '{file_name}' (ID: {file_id})...")
-                  updated = service.files().update(
-                      fileId=file_id,
-                      media_body=media,
-                      fields='id, name'
-                  ).execute()
-                  print(f"Successfully updated '{file_name}'!")
-              else:
-                  # 存在しなければ新規作成
-                  print(f"Creating new file '{file_name}'...")
-                  file_metadata = {'name': file_name, 'parents': [folder_id]}
-                  created = service.files().create(
-                      body=file_metadata,
-                      media_body=media,
-                      fields='id, name'
-                  ).execute()
-                  print(f"Successfully uploaded '{file_name}'!")
+              try:
+                  if existing_files:
+                      # 同名ファイルが存在すれば ID を指定して内容を「上書き更新」
+                      file_id = existing_files[0]['id']
+                      print(f"Overwriting existing file '{file_name}' (ID: {file_id})...")
+                      updated = service.files().update(
+                          fileId=file_id,
+                          media_body=media,
+                          fields='id, name',
+                          supportsAllDrives=True
+                      ).execute()
+                      print(f"Successfully updated '{file_name}'!")
+                  else:
+                      # 存在しなければ新規作成
+                      print(f"Creating new file '{file_name}'...")
+                      file_metadata = {'name': file_name, 'parents': [folder_id]}
+                      created = service.files().create(
+                          body=file_metadata,
+                          media_body=media,
+                          fields='id, name',
+                          supportsAllDrives=True
+                      ).execute()
+                      print(f"Successfully uploaded '{file_name}'!")
+              except HttpError as error:
+                  die_with_permission_hint(error, folder_id)
 
           EOF
