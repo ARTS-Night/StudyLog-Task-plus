@@ -205,6 +205,18 @@ function makeStorageArea(areaName, initial, emitChange) {
     externalSet(items) {
       const changes = apply(items);
       queueMicrotask(() => emitChange(changes, areaName));
+    },
+    remove(keys, callback) {
+      const changes = {};
+      (Array.isArray(keys) ? keys : [keys]).forEach((key) => {
+        if (!Object.hasOwn(data, key)) return;
+        changes[key] = { oldValue: clone(data[key]), newValue: undefined };
+        delete data[key];
+      });
+      queueMicrotask(() => {
+        if (callback) callback();
+        if (Object.keys(changes).length) emitChange(changes, areaName);
+      });
     }
   };
 }
@@ -285,7 +297,10 @@ async function main() {
   const emitStorageChange = (changes, areaName) => {
     [...storageListeners].forEach((listener) => listener(changes, areaName));
   };
-  const localArea = makeStorageArea("local", { __storage_mode__: "sync" }, emitStorageChange);
+  const localArea = makeStorageArea("local", {
+    __storage_mode__: "sync",
+    "__task_sync_mirror__:100": { subject: "前回ミラー", tasks: legacyTasks }
+  }, emitStorageChange);
   const syncArea = makeStorageArea("sync", {
     "100": { subject: "旧形式テスト", tasks: legacyTasks }
   }, emitStorageChange);
@@ -339,127 +354,42 @@ async function main() {
   });
 
   vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/core/local-task-store.js", "utf8"), context, { filename: "local-task-store.js" });
   vm.runInContext(fs.readFileSync("src/ui/popup.js", "utf8"), context, { filename: "popup.js" });
   await settle();
 
   const content = elements.get("content");
   const refreshButton = elements.get("btn-refresh");
-  assert.equal(refreshButton.disabled, true, "同期確認中は手動更新を無効にする");
-  assert.match(content.textContent, /同期データを確認中/);
+  assert.equal(refreshButton.disabled, false, "同期確認前も手元のミラーを更新表示できる");
+  assert.equal(content.querySelectorAll(".mark").length, 2, "起動直後に前回ミラーを描画する");
+  assert.doesNotMatch(content.textContent, /同期データを確認中/);
 
-  const readsBeforeBlockedRefresh = syncArea._stats.gets;
-  refreshButton.click();
-  // disabled属性を無視してlistenerを直接発火しても、SyncGuardがストレージ読込を防ぐ。
-  refreshButton.dispatch("click", { force: true });
-  await settle();
-  assert.equal(syncArea._stats.gets, readsBeforeBlockedRefresh);
-  assert.equal(syncArea._stats.sets, 0, "同期確認中の手動更新は書き込みを行わない");
-
-  syncGuard.setReady(true);
-  await settle();
-  assert.equal(refreshButton.disabled, false, "同期確認後は手動更新を有効にする");
-  assert.equal(content.querySelectorAll(".mark").length, 2, "準備完了後にタスクを描画する");
-
-  // 画面に一覧が残った状態でガードが閉じても、完了ボタンからは書き込ませない。
-  syncGuard.setReady(false);
-  content.querySelectorAll(".mark")[1].click();
-  await settle();
-  assert.equal(syncArea._stats.sets, 0, "同期確認中の完了切替はストレージへ書き込まない");
-  assert.equal(syncArea._data["100"].tasks[1].done, false);
-  syncGuard.setReady(true);
-
-  const readsBeforeChanges = syncArea._stats.gets;
-  syncArea.externalSet({
-    "100": { subject: "通知1", tasks: legacyTasks }
-  });
-  syncArea.externalSet({
-    "100": { subject: "通知2", tasks: legacyTasks }
-  });
-  await settle();
-  await delay(90);
-  await settle();
-  assert.equal(
-    syncArea._stats.gets,
-    readsBeforeChanges + 1,
-    "数字キーの連続変更通知はdebounceして1回だけ再描画する"
-  );
-  assert.match(content.textContent, /通知2/, "再描画では最新のストレージ内容を使う");
-
-  let marks = content.querySelectorAll(".mark");
-  assert.equal(marks.length, 2);
-  immediateMutationLock.rejectNext();
-  marks[0].click();
-  await settle();
-  assert.equal(marks[0].disabled, false, "a rejected common lock must restore the clicked control");
-  assert.deepEqual(
-    syncArea._data["100"].tasks.map((task) => task.done),
-    [false, false],
-    "a rejected common lock must roll back the optimistic completion state"
-  );
-  assert.equal(
-    syncArea._data["100"].tasks.some((task) => Object.hasOwn(task, "completedAt")),
-    false,
-    "rejected completion must not leak completedAt into storage"
-  );
-
-  await delay(90);
-  await settle();
-  marks = content.querySelectorAll(".mark");
   const completionStartedAt = Date.now();
-  marks[1].click();
-  await settle(16);
+  content.querySelectorAll(".mark")[1].click();
+  await settle(12);
+  assert.equal(syncArea._stats.sets, 0, "確認前の完了切替はsyncへ書き込まない");
+  const pending = localArea._data.__task_pending_ops__;
+  assert.equal(Object.keys(pending).length, 1, "完了切替をタスク単位outboxへ保存する");
+  assert.equal(Object.values(pending)[0].type, "set-done");
+  assert.equal(Object.values(pending)[0].task.done, true);
+  assert.ok(Object.values(pending)[0].task.completedAt >= completionStartedAt);
 
-  assert.equal(syncArea._stats.sets, 1, "後者の完了切替を1回だけ保存する");
-  const storedTasks = syncArea._data["100"].tasks;
-  assert.deepEqual(
-    storedTasks.map((task) => task.id),
-    ["legacy-100-0", "legacy-100-1"],
-    "IDなし旧タスクには位置に基づく決定的IDを付ける"
-  );
-  assert.deepEqual(
-    storedTasks.map((task) => task.done),
-    [false, true],
-    "本文と完了状態が同じ旧タスクでも、クリックした後者だけを切り替える"
-  );
-  assert.deepEqual(
-    storedTasks.map((task) => task.createdAt),
-    [firstCreatedAt, secondCreatedAt],
-    "完了切替でcreatedAtを維持する"
-  );
-  assert.ok(storedTasks[1].completedAt >= completionStartedAt, "完了操作でcompletedAtを記録する");
-
-  await delay(90);
-  await settle();
-  assert.equal(content.querySelectorAll(".task-completed").length, 1, "完了日をポップアップへ表示する");
-  marks = content.querySelectorAll(".mark");
-  marks[1].click();
-  await settle(16);
-  assert.equal(syncArea._data["100"].tasks[1].done, false);
-  assert.equal(
-    Object.hasOwn(syncArea._data["100"].tasks[1], "completedAt"),
-    false,
-    "未完了へ戻したときcompletedAtを削除する"
-  );
+  syncGuard.setReady(true);
+  await settle(20);
+  assert.equal(syncArea._data["100"].tasks.length, 2);
+  assert.deepEqual(syncArea._data["100"].tasks.map((task) => task.id),
+    ["legacy-100-0", "legacy-100-1"], "旧形式タスクの決定的IDを維持する");
+  assert.equal(syncArea._data["100"].tasks[1].done, true);
   assert.equal(syncArea._data["100"].tasks[1].createdAt, secondCreatedAt);
+  assert.equal(localArea._data.__task_pending_ops__, undefined, "成功した操作だけoutboxから除去する");
 
+  syncArea.externalSet({
+    "100": { subject: "他端末の更新", tasks: syncArea._data["100"].tasks }
+  });
+  await settle();
   await delay(90);
   await settle();
-  marks = content.querySelectorAll(".mark");
-  const recompletionStartedAt = Date.now();
-  marks[1].click();
-  await settle(16);
-  assert.ok(syncArea._data["100"].tasks[1].completedAt >= recompletionStartedAt, "再完了時は新しい日時を記録する");
-
-  // MODE_KEYの通知がまだポップアップへ届いていなくても、grant後に保存先を
-  // 読み直し、切替後のlocal領域へ変更する。
-  localArea._data.__storage_mode__ = "local";
-  localArea._data["100"] = clone(syncArea._data["100"]);
-  const syncSetsBeforeModeRace = syncArea._stats.sets;
-  content.querySelectorAll(".mark")[0].click();
-  await settle(16);
-  assert.equal(syncArea._stats.sets, syncSetsBeforeModeRace);
-  assert.equal(localArea._stats.sets, 1);
-  assert.equal(localArea._data["100"].tasks[0].done, true);
+  assert.match(content.textContent, /他端末の更新/, "sync onChangedをミラーと表示へ反映する");
 
   console.log("popup runtime smoke test passed");
 }

@@ -35,7 +35,8 @@
   let mode = "sync";
   let storage = chrome.storage.sync;
   let watchedArea = "sync";
-  let ready = false;
+  // ローカルミラー／outboxは起動直後から操作できる。
+  let ready = true;
   let busy = false;
   let fullCatalog = emptyCatalog();
   let partialCatalog = emptyCatalog();
@@ -331,10 +332,7 @@
   }
 
   function showSyncStatus() {
-    const pendingText = pendingAdds.length > 0
-      ? `追加した${pendingAdds.length}件は端末に保留し、確認後に自動保存します。`
-      : "この間も新しいタスクは追加できます。";
-    showStatus(`同期中です… ${pendingText}`, false, true);
+    showStatus("端末に保存した変更は、同期確認後に自動反映します。", false, true);
   }
 
   function renderFatal(message) {
@@ -355,16 +353,16 @@
     addButton.disabled = busy || !hasSelectedClass;
 
     taskGroups.querySelectorAll("[data-write]").forEach((element) => {
-      element.disabled = !ready || busy;
+      element.disabled = busy;
     });
     editForm.querySelectorAll("[data-write]").forEach((element) => {
       element.disabled = !ready || busy;
     });
-    refreshButton.disabled = !ready || busy;
+    refreshButton.disabled = busy;
     updateCatalogButton.disabled = busy;
-    taskSearch.disabled = !ready;
-    taskStatusFilter.disabled = !ready;
-    clearTaskSearchButton.disabled = !ready || !hasActiveTaskFilter();
+    taskSearch.disabled = false;
+    taskStatusFilter.disabled = false;
+    clearTaskSearchButton.disabled = !hasActiveTaskFilter();
   }
 
   function setBusy(value) {
@@ -715,9 +713,7 @@
     const generation = ++loadGeneration;
     const requestedStorage = storage;
     const localRequest = storageGet(chrome.storage.local, null);
-    const taskRequest = requestedStorage === chrome.storage.local
-      ? localRequest
-      : storageGet(requestedStorage, null);
+    const taskRequest = LocalTaskStore.readAll();
     try {
       const [localItems, taskItems] = await Promise.all([
         localRequest,
@@ -729,7 +725,7 @@
       fullCatalog = normalizeCatalog(localItems[CATALOG_KEY]);
       partialCatalog = normalizeCatalog(localItems[PARTIAL_CATALOG_KEY]);
       catalog = combineCatalogs(fullCatalog, partialCatalog);
-      pendingAdds = pendingAddsFromStorage(localItems);
+      pendingAdds = [];
       pendingStateUnknown = false;
       rebuildCatalogIndex();
       entries = readTaskEntries(taskItems);
@@ -746,27 +742,37 @@
     }
   }
 
-  async function mutateClass(classId, subjectHint, mutate) {
-    if (!ready || busy) return false;
+  async function mutateClass(classId, subjectHint, mutate, typeHint) {
+    if (busy) return false;
     setBusy(true);
     let saved = false;
     let refreshed = true;
     try {
-      await TaskMutationLock.request(async () => {
-        const mutationStorage = await getCurrentTaskStorage();
-        return withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
-          const result = await storageGet(mutationStorage, [classId]);
-          const latest = normalizeEntry(result[classId], classId);
-          const nextTasks = mutate(latest.tasks.slice());
-          if (!Array.isArray(nextTasks)) throw new Error("タスクの更新内容が正しくありません");
-          const subject = latest.subject || subjectHint || "";
-          if (nextTasks.length === 0) {
-            await storageRemove(mutationStorage, [classId]);
-          } else {
-            await storageSet(mutationStorage, { [classId]: { subject, tasks: nextTasks } });
+      const latest = await LocalTaskStore.readClass(classId);
+      const nextTasks = mutate(latest.tasks.slice());
+      if (!Array.isArray(nextTasks)) throw new Error("タスクの更新内容が正しくありません");
+      const before = new Map(latest.tasks.map((task) => [task.id, task]));
+      const after = new Map(nextTasks.map((task) => [task.id, task]));
+      let operation = null;
+      for (const task of latest.tasks) {
+        if (!after.has(task.id)) {
+          operation = { type: "remove", classId, taskId: task.id,
+            subject: latest.subject || subjectHint || "" };
+          break;
+        }
+      }
+      if (!operation) {
+        for (const task of nextTasks) {
+          const previous = before.get(task.id);
+          if (!previous || JSON.stringify(previous) !== JSON.stringify(task)) {
+            operation = { type: previous ? (typeHint || "edit") : "add",
+              classId, taskId: task.id, subject: latest.subject || subjectHint || "", task };
+            break;
           }
-        });
-      });
+        }
+      }
+      if (!operation) throw new Error("変更対象のタスクが見つかりませんでした");
+      await LocalTaskStore.mutate(operation);
       saved = true;
       refreshed = await loadAll({ silent: true, preserveYear: true });
     } catch (error) {
@@ -774,7 +780,7 @@
       await loadAll({ silent: true, preserveYear: true });
     } finally {
       finishBusy();
-      if (saved && refreshed) showStatus("保存しました", false);
+      if (saved && refreshed) showStatus(mode === "sync" ? "端末に保存しました（確認後に同期）" : "保存しました", false);
     }
     return saved;
   }
@@ -924,11 +930,6 @@
     }
 
     const createdAt = Date.now();
-    if (!ready) {
-      await queuePendingTask(selected, text, createdAt);
-      return;
-    }
-
     const saved = await mutateClass(selected.classId, selected.subject, (tasks) => {
       let id = TaskLifecycle.createTaskId();
       while (tasks.some((task) => task.id === id)) id = TaskLifecycle.createTaskId();
@@ -948,7 +949,7 @@
       if (index < 0) throw new Error("このタスクは別の画面で削除されています");
       tasks[index] = TaskLifecycle.setDone(tasks[index], desiredDone, changedAt);
       return tasks;
-    });
+    }, "set-done");
   }
 
   function openEditDialog(entry, task, returnFocus) {
@@ -980,7 +981,7 @@
       if (index < 0) throw new Error("このタスクは別の画面で削除されています");
       tasks[index] = { ...tasks[index], text };
       return tasks;
-    });
+    }, "edit");
   }
 
   function deleteTask(entry, task) {
@@ -1033,7 +1034,7 @@
         catalogTabTimer = null;
         if (catalogTabId !== tab.id) return;
         const message = "授業一覧を取得できませんでした。背景タブでログイン状態を確認してください。";
-        showStatus(!ready ? `同期中です… ${message}` : message, true, true);
+        showStatus(message, true, true);
       }, CATALOG_TAB_TIMEOUT);
 
       if (!ready) {
@@ -1140,10 +1141,7 @@
 
     const catalogChanged = areaName === "local"
       && (!!changes[CATALOG_KEY] || !!changes[PARTIAL_CATALOG_KEY]);
-    const pendingChanged = areaName === "local"
-      && Object.keys(changes).some((key) =>
-        key === PENDING_ADDS_KEY || key.startsWith(PENDING_ADD_PREFIX)
-      );
+    const pendingChanged = false;
     if (catalogChanged) {
       if (changes[CATALOG_KEY]) {
         fullCatalog = normalizeCatalog(changes[CATALOG_KEY].newValue);
@@ -1160,11 +1158,8 @@
       void handlePendingStorageChange();
     }
 
-    // 同期ガードが開くまでは、同期領域の内容を画面にも読み込まない。
-    // この間も端末ローカルの授業一覧と保留キューだけは上で反映する。
-    if (!ready) return;
-
-    const tasksChanged = areaName === watchedArea && Object.keys(changes).some((key) => /^\d+$/.test(key));
+    const tasksChanged = (areaName === watchedArea && Object.keys(changes).some((key) => /^\d+$/.test(key)))
+      || LocalTaskStore.isLocalChange(changes, areaName);
     // カタログだけの変更は上で現在のタスクへ反映済み。全ストレージを再読込しない。
     if (!tasksChanged) return;
     if (busy) {
@@ -1189,13 +1184,7 @@
   });
   addForm.addEventListener("submit", addTask);
   refreshButton.addEventListener("click", () => {
-    if (pendingAdds.length > 0) {
-      void flushPendingAdds();
-    } else {
-      void loadAll({ silent: false, preserveYear: true }).then((loaded) => {
-        if (loaded && pendingAdds.length > 0) void flushPendingAdds();
-      });
-    }
+    void loadAll({ silent: false, preserveYear: true });
   });
   updateCatalogButton.addEventListener("click", () => openCatalogPage(false));
   editForm.addEventListener("submit", saveEdit);
@@ -1210,8 +1199,7 @@
   chrome.tabs.onRemoved.addListener(handleCatalogTabRemoved);
 
   window.addEventListener("beforeunload", (event) => {
-    const syncInProgress = mode === "sync" && !ready;
-    if (!syncInProgress && !busy && pendingAdds.length === 0 && !pendingStateUnknown) return;
+    if (!busy && !pendingStateUnknown) return;
     event.preventDefault();
     event.returnValue = "";
   });
@@ -1225,50 +1213,36 @@
       fullCatalog = normalizeCatalog(result[CATALOG_KEY]);
       partialCatalog = normalizeCatalog(result[PARTIAL_CATALOG_KEY]);
       catalog = combineCatalogs(fullCatalog, partialCatalog);
-      pendingAdds = pendingAddsFromStorage(result);
+      pendingAdds = [];
       pendingStateUnknown = false;
       rebuildCatalogIndex();
       renderCatalogControls(false);
       renderTasks();
 
       SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
-      if (!SyncGuard.isReady()) showSyncStatus();
+      LocalTaskStore.init(mode);
+      void loadAll({ silent: true, preserveYear: false });
       SyncGuard.when(() => {
         void (async () => {
-          ready = true;
-          updateControls();
-          renderTasks();
-          if (busy) {
-            flushAfterBusy = true;
-            return;
-          }
           let cleanupNotice = "";
           let cleanupError = false;
           try {
+            await LocalTaskStore.flush();
             const cleanupResult = await TaskLifecycle.cleanup(mode);
             if (cleanupResult.failed > 0) {
-              cleanupNotice = `${cleanupResult.deleted}件を削除しましたが、${cleanupResult.failed}授業の自動整理に失敗しました`;
+              cleanupNotice = cleanupResult.deleted + "件を削除しましたが、"
+                + cleanupResult.failed + "授業の自動整理に失敗しました";
               cleanupError = true;
             } else if (cleanupResult.deleted > 0) {
-              cleanupNotice = `期限を過ぎた完了タスクを${cleanupResult.deleted}件削除しました`;
+              cleanupNotice = "期限を過ぎた完了タスクを" + cleanupResult.deleted + "件削除しました";
             }
           } catch (error) {
-            cleanupNotice = makeError("完了タスクを自動整理できませんでした", error).message;
+            cleanupNotice = makeError("同期処理を完了できませんでした", error).message;
             cleanupError = true;
           }
-          if (pendingAdds.length > 0) {
-            if (cleanupNotice) showStatus(cleanupNotice, cleanupError, cleanupError);
-            void flushPendingAdds();
-            return;
-          }
-          void loadAll({ silent: true, preserveYear: false }).then((loaded) => {
-            if (!loaded) return;
-            if (cleanupNotice) {
-              showStatus(cleanupNotice, cleanupError, cleanupError);
-            } else {
-              showStatus(mode === "sync" ? "同期の確認が完了しました" : "タスクを読み込みました", false);
-            }
-          });
+          const loaded = await loadAll({ silent: true, preserveYear: false });
+          if (!loaded) return;
+          if (cleanupNotice) showStatus(cleanupNotice, cleanupError, cleanupError);
         })();
       });
     })

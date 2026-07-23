@@ -1,0 +1,130 @@
+name: Zip and Upload to Google Drive
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. リポジトリのチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Python 環境のセットアップ
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # 3. Google 公式 API ライブラリのインストール
+      - name: Install Google API client
+        run: |
+          pip install --no-cache-dir google-api-python-client google-auth
+
+      # 4. ZIP ファイルの作成
+      - name: Create ZIP archive
+        run: |
+          DATE=$(date +'%Y%m%d')
+          VERSION=${GITHUB_SHA:0:7}
+          TARGETS="src image README.md manifest.json" # まとめたいフォルダやファイル
+          ZIP_NAME="archive_${DATE}_${VERSION}.zip"
+          
+          zip -r9 "$ZIP_NAME" $TARGETS
+          # 後続の Python スクリプトにファイル名を渡すため環境変数にセット
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      # 5. ZIP のアップロード ＆ 個別 Markdown ファイルの直接アップロード（同名なら上書き）
+      - name: Upload Files to Google Drive via Official API
+        env:
+          GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          python - << 'EOF'
+          import os
+          import json
+          import mimetypes
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          # 1. 環境変数のセットアップ
+          sa_info = json.loads(os.environ['GDRIVE_SA_KEY'])
+          folder_id = os.environ['GDRIVE_FOLDER_ID']
+          zip_file_name = os.environ['ZIP_NAME']
+
+          # ★直接配置＆上書きしたいマークダウンファイル群（ここを自由に増やせます！）
+          MD_FILES = [
+              'README.md',
+              '344赤池璃月＿企画書.md',
+              '344赤池璃月_研究資料.md' #md ファイル名（必要に応じて書き換えてください）
+          ]
+
+          # 2. 認証情報の作成
+          creds = Credentials.from_service_account_info(
+              sa_info,
+              scopes=['https://www.googleapis.com/auth/drive.file']
+          )
+          service = build('drive', 'v3', credentials=creds)
+
+          # ----------------------------------------------------
+          # 処理 A: ZIP ファイルの新規アップロード
+          # ----------------------------------------------------
+          print(f"=== Uploading ZIP Archive: {zip_file_name} ===")
+          zip_metadata = {'name': zip_file_name, 'parents': [folder_id]}
+          zip_media = MediaFileUpload(zip_file_name, mimetype='application/zip', resumable=True)
+          
+          uploaded_zip = service.files().create(
+              body=zip_metadata,
+              media_body=zip_media,
+              fields='id, name'
+          ).execute()
+          print(f"Successfully uploaded ZIP! File ID: {uploaded_zip.get('id')}\n")
+
+          # ----------------------------------------------------
+          # 処理 B: Markdown ファイルの個別アップロード（既存があれば上書き）
+          # ----------------------------------------------------
+          print("=== Uploading / Updating Markdown Files ===")
+          for file_path in MD_FILES:
+              if not os.path.exists(file_path):
+                  print(f"Skipping '{file_path}': File not found on repository.")
+                  continue
+
+              file_name = os.path.basename(file_path)
+              mime_type, _ = mimetypes.guess_type(file_path)
+              if mime_type is None:
+                  mime_type = 'text/markdown'
+
+              # 既存の同名ファイルがあるか Google Drive 内を検索
+              query = f"'{folder_id}' in parents and name = '{file_name}' and trashed = false"
+              results = service.files().list(q=query, fields="files(id, name)").execute()
+              existing_files = results.get('files', [])
+
+              media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+
+              if existing_files:
+                  # 同名ファイルが存在すれば ID を指定して内容を「上書き更新」
+                  file_id = existing_files[0]['id']
+                  print(f"Overwriting existing file '{file_name}' (ID: {file_id})...")
+                  updated = service.files().update(
+                      fileId=file_id,
+                      media_body=media,
+                      fields='id, name'
+                  ).execute()
+                  print(f"Successfully updated '{file_name}'!")
+              else:
+                  # 存在しなければ新規作成
+                  print(f"Creating new file '{file_name}'...")
+                  file_metadata = {'name': file_name, 'parents': [folder_id]}
+                  created = service.files().create(
+                      body=file_metadata,
+                      media_body=media,
+                      fields='id, name'
+                  ).execute()
+                  print(f"Successfully uploaded '{file_name}'!")
+
+          EOF

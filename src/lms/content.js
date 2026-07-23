@@ -206,9 +206,9 @@
     }
 
     SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
-    // 確認前に追加された保留タスクを、確認後すぐにまとめて実データへ反映する。
+    LocalTaskStore.init(mode);
     SyncGuard.when(() => {
-      pendingAddsFlushed = flushPendingAdds();
+      pendingAddsFlushed = LocalTaskStore.flush();
     });
 
     addStyle();
@@ -263,16 +263,18 @@
       }
     }
 
-    // 同じ授業が複数の日・時限に表示されていても、タスクだけを全箇所へ即時反映する。
-    // 初回同期の確認前に届いた変更は、SyncGuard.when() 内の初期読み込みへ任せる。
-    if (!SyncGuard.isReady() || areaName !== storageMode) return;
-    let tasksChanged = false;
-    Object.entries(changes).forEach(([classId, change]) => {
-      if (!/^\d+$/.test(classId)) return;
-      tasksChanged = true;
-      updateClassButtons(classId, change.newValue);
+    // sync変更はミラーへ保存された後に、未反映outboxを重ねて全表示面を更新する。
+    const taskChanged = (areaName === storageMode
+      && Object.keys(changes).some((key) => /^\d+$/.test(key)))
+      || LocalTaskStore.isLocalChange(changes, areaName);
+    if (!taskChanged) return;
+    const classIds = new Set();
+    document.querySelectorAll("." + BUTTON_CLASS).forEach((button) => {
+      if (/^\d+$/.test(button.dataset.classId || "")) classIds.add(button.dataset.classId);
     });
-    if (tasksChanged) refreshHomeTaskWidget();
+    classIds.forEach((classId) => void LocalTaskStore.readClass(classId)
+      .then((entry) => updateClassButtons(classId, entry)));
+    refreshHomeTaskWidget();
   });
 
   function createIcon(name, size = 16) {
@@ -738,11 +740,8 @@
     // 同じ授業が複数の日・時限にある場合も、追加された授業IDを一度に読み込む。
     // 個々のボタンから storage.get() すると、初期表示時のIPCと正規化が重複する。
     const classIds = Array.from(addedClassIds);
-    SyncGuard.when(() => {
-      storage.get(classIds, (result) => {
-        if (chrome.runtime.lastError || !result) return;
-        classIds.forEach((classId) => updateClassButtons(classId, result[classId]));
-      });
+    classIds.forEach((classId) => {
+      void LocalTaskStore.readClass(classId).then((entry) => updateClassButtons(classId, entry));
     });
   }
 
@@ -867,7 +866,7 @@
     list.className = "lms-task-list";
     const waiting = document.createElement("li");
     waiting.className = "lms-task-empty";
-    waiting.textContent = "同期データを確認中です…（最大20秒ほどかかります）";
+    waiting.textContent = "タスクはまだありません。";
     list.appendChild(waiting);
 
     const form = document.createElement("div");
@@ -909,26 +908,15 @@
       return button;
     }
 
-    function load() {
-      if (!SyncGuard.isReady()) return;
-      storage.get(null, (result) => {
-        if (chrome.runtime.lastError || !result) {
-          showLoadError();
-          return;
-        }
+    async function load() {
+      try {
+        const result = await LocalTaskStore.readAll();
         let order = 0;
         allTasks = [];
-        Object.entries(result).forEach(([classId, value]) => {
-          if (!/^\d+$/.test(classId) || classId.startsWith("__")) return;
-          const entry = normalizeEntry(value, classId);
+        Object.entries(result).forEach(([classId, entry]) => {
           entry.tasks.forEach((task) => {
-            allTasks.push({
-              classId,
-              subject: entry.subject || "不明な授業",
-              task,
-              createdAt: TaskLifecycle.normalizeTimestamp(task.createdAt),
-              order: order++
-            });
+            allTasks.push({ classId, subject: entry.subject || "不明な授業", task,
+              createdAt: TaskLifecycle.normalizeTimestamp(task.createdAt), order: order++ });
           });
         });
         allTasks.sort((a, b) => {
@@ -938,14 +926,16 @@
           return a.order - b.order;
         });
         render();
-      });
+      } catch (error) {
+        showLoadError(error);
+      }
     }
 
-    function showLoadError() {
+    function showLoadError(error) {
       list.innerHTML = "";
       const failed = document.createElement("li");
       failed.className = "lms-task-empty";
-      failed.textContent = `タスクを読み込めませんでした${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`;
+      failed.textContent = `タスクを読み込めませんでした${error ? `: ${error.message}` : ""}`;
       list.appendChild(failed);
     }
 
@@ -1004,7 +994,17 @@
         editButton.title = "編集";
         editButton.appendChild(createIcon("edit", 15));
         editButton.addEventListener("click", () => openForm(entry));
-        actions.appendChild(editButton);
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.title = "削除";
+        deleteButton.appendChild(createIcon("delete", 15));
+        deleteButton.addEventListener("click", () => {
+          allTasks = allTasks.filter((item) =>
+            item.classId !== entry.classId || item.task.id !== entry.task.id);
+          render();
+          void mutateTask(entry.classId, entry.task.id, { type: "remove" });
+        });
+        actions.append(editButton, deleteButton);
         item.append(checkbox, content, actions);
         list.appendChild(item);
       });
@@ -1023,45 +1023,26 @@
       form.hidden = true;
     }
 
-    function mutateTask(classId, taskId, operation) {
-      const fail = (message, releaseMutation) => {
-        releaseMutation();
-        showToast(`タスクを保存できませんでした: ${message}`);
-        load();
-      };
-      runClassMutation(classId, (mutationStorage, releaseMutation) => {
-        mutationStorage.get([classId], (result) => {
-          if (chrome.runtime.lastError || !result) {
-            const message = chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存内容を読み込めませんでした";
-            fail(message, releaseMutation);
-            return;
-          }
-          const latest = normalizeEntry(result[classId], classId);
-          const index = latest.tasks.findIndex((task) => task.id === taskId);
-          if (index < 0) {
-            fail("対象のタスクが見つかりませんでした", releaseMutation);
-            return;
-          }
-          const nextTasks = latest.tasks.slice();
-          const current = nextTasks[index];
-          nextTasks[index] = operation.type === "set-done"
+    async function mutateTask(classId, taskId, operation) {
+      try {
+        const entry = await LocalTaskStore.readClass(classId);
+        const current = entry.tasks.find((task) => task.id === taskId);
+        if (!current) throw new Error("対象のタスクが見つかりませんでした");
+        if (operation.type === "remove") {
+          await LocalTaskStore.mutate({ type: "remove", classId, taskId, subject: entry.subject });
+        } else {
+          const task = operation.type === "set-done"
             ? TaskLifecycle.setDone(current, operation.done, operation.changedAt)
             : { ...current, text: operation.text };
-          mutationStorage.set({ [classId]: { subject: latest.subject, tasks: nextTasks } }, () => {
-            const error = chrome.runtime.lastError;
-            if (error) {
-              fail(error.message, releaseMutation);
-              return;
-            }
-            releaseMutation();
-            showSavedToast(mutationStorage);
-            load();
-          });
-        });
-      }).catch((error) => {
-        showToast(`タスクを保存できませんでした: ${error.message}`);
-        load();
-      });
+          await LocalTaskStore.mutate({ type: operation.type, classId, taskId,
+            subject: entry.subject, task });
+        }
+        showToast(storageMode === "sync" ? "端末に保存しました（確認後に同期）" : "保存しました");
+        await load();
+      } catch (error) {
+        showToast("タスクを保存できませんでした: " + error.message);
+        await load();
+      }
     }
 
     cancelButton.addEventListener("click", closeForm);
@@ -1077,7 +1058,7 @@
     });
 
     panel.refreshTasks = load;
-    SyncGuard.when(load);
+    void load();
     return true;
   }
 
@@ -1105,197 +1086,117 @@
     const subjectName = options.subjectName || "";
     const onFormToggle = options.onFormToggle || function () {};
     const onTasksChanged = options.onTasksChanged || function () {};
-
     let tasks = [];
-    // 初回同期の確認が終わるまでの間、この授業について追加済みの保留タスク（表示専用）
-    let pendingTasks = [];
+    let subject = subjectName && subjectName !== "不明な授業" ? subjectName : "";
     let editingTaskId = null;
+    let saveChain = Promise.resolve();
 
     const body = document.createElement("div");
     body.className = "lms-task-body";
-
     const listEl = document.createElement("ul");
     listEl.className = "lms-task-list";
-
     const form = document.createElement("div");
     form.className = "lms-task-form";
     form.hidden = true;
-
     const formTextarea = document.createElement("textarea");
     formTextarea.placeholder = "タスクの内容を入力...";
-
     const formButtons = document.createElement("div");
     formButtons.className = "lms-task-form-buttons";
-
     const formCancelBtn = document.createElement("button");
     formCancelBtn.type = "button";
     formCancelBtn.textContent = "キャンセル";
-
     const formSaveBtn = document.createElement("button");
     formSaveBtn.type = "button";
     formSaveBtn.className = "lms-memo-save-btn";
     formSaveBtn.textContent = "保存";
-
     formButtons.append(formCancelBtn, formSaveBtn);
     form.append(formTextarea, formButtons);
-
     const buttonsRow = document.createElement("div");
     buttonsRow.className = "lms-memo-popup-buttons";
-
     const addButton = document.createElement("button");
     addButton.type = "button";
     addButton.className = "lms-task-add-btn";
     addButton.append(createIcon("add", 14), document.createTextNode("新しいタスク"));
-
     buttonsRow.appendChild(addButton);
     body.append(listEl, form, buttonsRow);
 
-    // 初回同期の確認が終わるまでは既存一覧を読み込まない（空データで上書きしないため）が、
-    // 新規追加は保留キューに積むだけなので確認前でも即座にでき、追加ボタンは無効化しない。
-    if (!SyncGuard.isReady()) {
-      readPendingAddsForClass(classId).then((items) => {
-        pendingTasks = items;
+    async function load() {
+      try {
+        const entry = await LocalTaskStore.readClass(classId);
+        tasks = entry.tasks;
+        subject = entry.subject || subject;
         renderList();
+        onTasksChanged(tasks);
+      } catch (error) {
+        showToast("タスクを読み込めませんでした: " + error.message);
+      }
+    }
+    function persist(operation) {
+      saveChain = saveChain.then(async () => {
+        await LocalTaskStore.mutate(operation);
+        showToast(storageMode === "sync" ? "端末に保存しました（確認後に同期）" : "保存しました");
+        await load();
+      }).catch(async (error) => {
+        showToast("タスクを保存できませんでした: " + error.message);
+        await load();
       });
     }
-
-    SyncGuard.when(() => {
-      // 確認直後は保留タスクの実データへの反映がまだ途中の可能性があるため、
-      // その完了を待ってから読み直す（反映前の空データを読んでしまうのを防ぐ）。
-      pendingAddsFlushed.then(() => new Promise((resolve) => {
-        storage.get([classId], (result) => {
-          if (chrome.runtime.lastError || !result) {
-            resolve({ error: chrome.runtime.lastError });
-            return;
-          }
-          resolve({ tasks: normalizeEntry(result[classId], classId).tasks });
-        });
-      })).then(async (loaded) => {
-        if (loaded.error) {
-          listEl.innerHTML = "";
-          const failed = document.createElement("li");
-          failed.className = "lms-task-empty";
-          failed.textContent = `タスクを読み込めませんでした: ${loaded.error.message}`;
-          listEl.appendChild(failed);
-          return;
-        }
-        tasks = loaded.tasks;
-        // flush が失敗していた場合に備え、この授業でまだ未反映の保留タスクがあれば
-        // 「消えた」ように見せず引き続き保留表示にする。
-        pendingTasks = await readPendingAddsForClass(classId).catch(() => []);
-        renderList();
-      });
-    });
-
-    // 他の端末（や別タブ）でこの授業のタスクが変更されたら、開いている画面へ反映する。
-    // 古い一覧を見たまま操作し続けるのを防ぐ
-    const watchedArea = storage === chrome.storage.sync ? "sync" : "local";
-    const onStorageChanged = (changes, changedArea) => {
-      // 破棄漏れに備えた保険（正規の解除はポップアップを閉じるときの destroy()）
-      if (!body.isConnected) {
-        destroy();
-        return;
-      }
-      if (!SyncGuard.isReady() || changedArea !== watchedArea || !changes[classId]) return;
-      // 自分の保存処理中に届いた変更はここでは反映できないため、
-      // 保存完了後にストレージを読み直すよう印を付けておく
-      if (saving) {
-        refreshAfterSave = true;
-        return;
-      }
-      const next = normalizeEntry(changes[classId].newValue, classId).tasks;
-      if (JSON.stringify(next) === JSON.stringify(tasks)) return;
-      tasks = next;
-      renderList();
-      onTasksChanged(tasks);
-    };
-    chrome.storage.onChanged.addListener(onStorageChanged);
-
-    function destroy() {
-      chrome.storage.onChanged.removeListener(onStorageChanged);
-    }
-
     function renderList() {
       listEl.innerHTML = "";
-
-      pendingTasks.forEach((item) => {
-        const pendingItem = document.createElement("li");
-        pendingItem.className = "lms-task-item lms-task-pending";
-        const text = document.createElement("span");
-        text.className = "lms-task-text";
-        text.textContent = item.text;
-        const badge = document.createElement("span");
-        badge.className = "lms-task-pending-badge";
-        badge.textContent = "同期後に保存";
-        pendingItem.append(text, badge);
-        listEl.appendChild(pendingItem);
-      });
-
-      if (tasks.length === 0 && pendingTasks.length === 0) {
+      if (!tasks.length) {
         const empty = document.createElement("li");
         empty.className = "lms-task-empty";
-        empty.textContent = SyncGuard.isReady()
-          ? "タスクはまだありません。"
-          : "同期データを確認中です…（追加はすぐにできます）";
+        empty.textContent = "タスクはまだありません。";
         listEl.appendChild(empty);
         return;
       }
-
       tasks.forEach((task) => {
         const item = document.createElement("li");
         item.className = "lms-task-item" + (task.done ? " done" : "");
-
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = task.done;
-        checkbox.setAttribute("aria-label", `${task.text}を${task.done ? "未完了に戻す" : "完了にする"}`);
+        checkbox.setAttribute("aria-label", task.text + "を" + (task.done ? "未完了に戻す" : "完了にする"));
         checkbox.addEventListener("change", () => {
-          const desiredDone = checkbox.checked;
           const changedAt = Date.now();
-          const updated = TaskLifecycle.setDone(task, desiredDone, changedAt);
-          const index = tasks.findIndex((item) => item.id === task.id);
-          if (index >= 0) tasks[index] = updated;
-          persist({ type: "set-done", id: task.id, done: desiredDone, changedAt });
+          const next = TaskLifecycle.setDone(task, checkbox.checked, changedAt);
+          const index = tasks.findIndex((value) => value.id === task.id);
+          if (index >= 0) tasks[index] = next;
           renderList();
+          persist({ type: "set-done", classId: String(classId), taskId: task.id,
+            subject, task: next });
         });
-
+        const taskContent = document.createElement("div");
+        taskContent.className = "lms-task-content";
         const text = document.createElement("span");
         text.className = "lms-task-text";
         text.textContent = task.text;
-
-        const taskContent = document.createElement("div");
-        taskContent.className = "lms-task-content";
         taskContent.appendChild(text);
         const created = createTaskDateElement(task.createdAt, "追加", "lms-task-created");
         const completed = createTaskDateElement(task.completedAt, "完了", "lms-task-completed");
         if (created) taskContent.appendChild(created);
         if (completed) taskContent.appendChild(completed);
-
         const actions = document.createElement("div");
         actions.className = "lms-task-actions";
-
         const editBtn = document.createElement("button");
         editBtn.type = "button";
         editBtn.title = "編集";
         editBtn.appendChild(createIcon("edit", 15));
         editBtn.addEventListener("click", () => openForm(task));
-
         const deleteBtn = document.createElement("button");
         deleteBtn.type = "button";
         deleteBtn.title = "削除";
         deleteBtn.appendChild(createIcon("delete", 15));
         deleteBtn.addEventListener("click", () => {
-          tasks = tasks.filter((t) => t.id !== task.id);
-          persist({ type: "remove", id: task.id });
+          tasks = tasks.filter((value) => value.id !== task.id);
           renderList();
+          persist({ type: "remove", classId: String(classId), taskId: task.id, subject });
         });
-
         actions.append(editBtn, deleteBtn);
         item.append(checkbox, taskContent, actions);
         listEl.appendChild(item);
       });
     }
-
     function openForm(task) {
       editingTaskId = task ? task.id : null;
       formTextarea.value = task ? task.text : "";
@@ -1303,195 +1204,42 @@
       onFormToggle(true);
       formTextarea.focus();
     }
-
     function closeForm() {
       form.hidden = true;
       formTextarea.value = "";
       editingTaskId = null;
       onFormToggle(false);
     }
-
-    // 保存はタスクID単位の操作（upsert / remove）として扱い、保存直前に読み直した
-    // ストレージの最新タスク一覧へ適用する。画面を開いたまま他の端末で追加された
-    // タスクを、古い画面からの保存で丸ごと消さないため。
-    // 操作はキューで1件ずつ処理し、保存中の連打で読み書きが交錯しないようにする。
-    const saveQueue = [];
-    let saving = false;
-    // 保存中に他の端末からの変更通知が届いたら、保存完了後に読み直すための印
-    let refreshAfterSave = false;
-
-    function applyOp(list, op) {
-      if (op.type === "remove") {
-        return list.filter((t) => t.id !== op.id);
-      }
-      if (op.type === "set-done") {
-        const index = list.findIndex((task) => task.id === op.id);
-        if (index < 0) return list;
-        const next = list.slice();
-        next[index] = TaskLifecycle.setDone(next[index], op.done, op.changedAt);
-        return next;
-      }
-      const index = list.findIndex((t) => t.id === op.task.id);
-      if (index >= 0) {
-        const next = list.slice();
-        next[index] = op.task;
-        return next;
-      }
-      return [...list, op.task];
-    }
-
-    function persist(op) {
-      saveQueue.push(op);
-      processSaveQueue();
-    }
-
-    // 保存に失敗したときなどにストレージの内容を正として画面を戻す
-    function reloadFromStorage() {
-      getCurrentTaskStorage().then((currentStorage) => {
-        currentStorage.get([classId], (result) => {
-        if (chrome.runtime.lastError || !result) {
-          // 読み直しにも失敗した場合、空の一覧を表示すると全消えに見えるため
-          // 現在の画面は変えずにエラーだけ知らせる
-          showToast(`タスクを読み込めませんでした${chrome.runtime.lastError ? `: ${chrome.runtime.lastError.message}` : ""}`);
-          return;
-        }
-        tasks = normalizeEntry(result[classId], classId).tasks;
-        renderList();
-        onTasksChanged(tasks);
-        });
-      }).catch((error) => {
-        showToast(`タスクを読み込めませんでした: ${error.message}`);
-      });
-    }
-
-    function processSaveQueue() {
-      if (saving || saveQueue.length === 0) return;
-      saving = true;
-      const ops = saveQueue.splice(0);
-
-      // ponytail: マージはタスクID単位。同じタスクを複数端末で同時に編集した場合と
-      // 科目名は後勝ちのまま。フィールド単位の統合が必要になったら task.updatedAt を導入する
-      // 保存済みの科目名がある場合は上書きしない（授業ページでは科目名が取れないことがあるため）
-      runClassMutation(classId, (mutationStorage, releaseMutation) => {
-        mutationStorage.get([classId], (result) => {
-        if (chrome.runtime.lastError) {
-          saving = false;
-          saveQueue.length = 0;
-          alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n変更は取り消されます。`);
-          releaseMutation();
-          reloadFromStorage();
-          return;
-        }
-
-        const existing = normalizeEntry(result[classId], classId);
-        const detectedSubject = subjectName && subjectName !== "不明な授業" ? subjectName : "";
-        const subject = existing.subject || detectedSubject;
-        const merged = ops.reduce(applyOp, existing.tasks);
-
-        const writeMerged = (callback) => {
-          if (merged.length === 0) {
-            mutationStorage.remove([classId], callback);
-          } else {
-            mutationStorage.set({ [classId]: { subject, tasks: merged } }, callback);
-          }
-        };
-
-        writeMerged(() => {
-          saving = false;
-          if (chrome.runtime.lastError) {
-            saveQueue.length = 0;
-            alert(`タスクを保存できませんでした: ${chrome.runtime.lastError.message}\n（1授業あたりの保存容量の上限を超えている可能性があります）\n変更は取り消されます。`);
-            releaseMutation();
-            reloadFromStorage();
-            return;
-          }
-          // merged には他の端末による変更も含まれているため、これを画面の正とする
-          tasks = merged;
-          renderList();
-          onTasksChanged(tasks);
-          showSavedToast(mutationStorage);
-          releaseMutation();
-          if (saveQueue.length > 0) {
-            processSaveQueue();
-          } else if (refreshAfterSave) {
-            // 保存中に届いた外部変更を取りこぼさないよう、最新の状態を読み直す
-            refreshAfterSave = false;
-            reloadFromStorage();
-          }
-        });
-        });
-      }).catch((error) => {
-        // Service Workerの更新・クラッシュなどで共通ロックへ接続できなかった場合も、
-        // 保存中のまま固めずストレージを正として楽観変更を戻す。
-        saving = false;
-        refreshAfterSave = false;
-        saveQueue.length = 0;
-        alert(`タスクを保存できませんでした: ${error.message}\n変更は取り消されます。`);
-        reloadFromStorage();
-      });
-    }
-
     addButton.addEventListener("click", () => openForm(null));
-
-    formCancelBtn.addEventListener("click", () => closeForm());
-
+    formCancelBtn.addEventListener("click", closeForm);
     formSaveBtn.addEventListener("click", () => {
       const text = formTextarea.value.trim();
-
-      if (text === "") {
-        closeForm();
-        return;
-      }
-
-      // 初回同期の確認前は既存一覧を読み込んでいない（tasks は常に空）ため、
-      // ここに来るのは常に新規追加。保留キューへ積むだけにして、実データの
-      // 読み書きは確認後の flushPendingAdds に任せる。
-      if (!editingTaskId && !SyncGuard.isReady()) {
-        const item = {
-          id: TaskLifecycle.createTaskId(),
-          classId: String(classId),
-          subject: subjectName && subjectName !== "不明な授業" ? subjectName : "",
-          text,
-          createdAt: Date.now()
-        };
-        closeForm();
-        appendPendingAdd(item)
-          .then(() => {
-            pendingTasks = pendingTasks.concat([item]);
-            renderList();
-            // 保存中にちょうど同期確認が完了していた場合、ページ読み込み時の
-            // 一回限りのflushだけでは今書いたキーを取りこぼす恐れがあるため、
-            // 念のためもう一度flushの機会を作る（既に確認済みなら即座に走る）。
-            SyncGuard.when(() => {
-              pendingAddsFlushed = flushPendingAdds();
-            });
-          })
-          .catch((error) => {
-            showToast(`タスクを端末に保留できませんでした: ${error.message}`);
-          });
-        return;
-      }
-
-      let changedTask = null;
-
+      if (!text) { closeForm(); return; }
+      let task;
+      let type;
       if (editingTaskId) {
-        const target = tasks.find((t) => t.id === editingTaskId);
-        if (target) {
-          target.text = text;
-          changedTask = target;
-        }
+        const current = tasks.find((value) => value.id === editingTaskId);
+        if (!current) { closeForm(); void load(); return; }
+        task = { ...current, text };
+        tasks = tasks.map((value) => value.id === task.id ? task : value);
+        type = "edit";
       } else {
-        changedTask = { id: TaskLifecycle.createTaskId(), text, done: false, createdAt: Date.now() };
-        tasks.push(changedTask);
-      }
-
-      if (changedTask) {
-        persist({ type: "upsert", task: { ...changedTask } });
+        task = { id: TaskLifecycle.createTaskId(), text, done: false, createdAt: Date.now() };
+        tasks.push(task);
+        type = "add";
       }
       closeForm();
       renderList();
+      persist({ type, classId: String(classId), taskId: task.id, subject, task });
     });
-
+    const onStorageChanged = (changes, areaName) => {
+      if (!body.isConnected) { destroy(); return; }
+      const syncChanged = areaName === storageMode && !!changes[classId];
+      if (syncChanged || LocalTaskStore.isLocalChange(changes, areaName)) void load();
+    };
+    chrome.storage.onChanged.addListener(onStorageChanged);
+    function destroy() { chrome.storage.onChanged.removeListener(onStorageChanged); }
+    void load();
     return { element: body, closeForm, destroy };
   }
 

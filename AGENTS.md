@@ -127,12 +127,14 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 | `__google_tasks_pending_ops__` | Google Tasksへ未反映の最新操作を `classId:taskId` ごとに1件保持する永続outbox。`create` / `update` / `delete` の操作意図をAPI呼出し前に保存し、同じタスクの後発変更は上書きする。`create` 成功後はローカルID書き戻しより先に返却された `googleTaskListId` / `googleTaskId` も保存し、起動時と2分間隔の `stalog-google-tasks-retry` アラームで未完了分を個別に再試行する。API処理と必要なID書き戻しが両方成功した場合だけ削除する |
 | `__google_tasks_synced_at__` | Google Tasksの保留操作が最後に完了した端末時刻（Unix epoch milliseconds）。追加・更新・削除のいずれでも成功時に `Date.now()` を保存し、設定ページの「最終同期」表示に使う |
 | `__google_tasks_last_error__` | 最後のGoogle Tasks同期エラー `{ message, time }`。次の送信成功で削除し、設定ページの赤枠へ表示する |
+| `__task_sync_mirror__:<classId>` | syncモードで最後に確認した授業データのローカルミラー。起動直後の表示に使い、sync変更を受けるたび更新する |
+| `__task_pending_ops__` | sync確認前を含むローカル操作の永続outbox。`classId:taskId`ごとにadd/edit/set-done/removeの最新操作を保持し、removeはtombstoneとして扱う |
 | `__sync_ready__` | 同期領域の到着を確認した時刻。24時間有効 |
 | `__device__` | 同期チェック用の端末ID・表示名 |
 | `__class_catalog__` | マイページ由来の完全な年度別授業一覧 |
 | `__class_catalog_home__` | ホーム由来の現年度補助一覧 |
 | `__class_catalog_attempt__` | マイページ取得を最後に試みた時刻 |
-| `__pending_task_add__:<taskId>` | 同期確認中に追加したタスク1件 |
+| `__pending_task_add__:<taskId>` | 旧バージョンの追加専用保留キー。読み込み・移行互換のみ |
 | `__pending_task_adds__` | 旧バージョンの保留タスク配列。読み込み互換のみ |
 | `__completed_task_retention_days__` | 完了後の自動削除日数。未設定・`0` は無効、選択肢は1/3/7/14/30/90日 |
 
@@ -160,9 +162,9 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 - マイページの主要セレクターは `#div-mypage .list-group.classes.classes-student-view` と `.a-mypage-class` です。汎用的な `.panel.panel-default` だけで授業一覧と判断しないでください。
 - 授業IDは `/lms/class/<数字>` を基本に取得し、マイページでは必要に応じて `c` クエリパラメーターをフォールバックに使います。
 
-### 初回同期中の保留タスク
+### 初回同期中のローカル操作
 
-専用画面だけは、SyncGuard が準備完了になる前でも新規追加できます。このとき sync 領域を直接書き換えず、local の独立キーへ次の形式で保留します。
+各タスク画面は SyncGuard が準備完了になる前でもローカルミラーを表示し、追加・編集・完了切替・削除を行えます。このとき sync 領域を直接書き換えず、local の `__task_pending_ops__` へタスクID単位の操作を永続化します。次の形式は旧版の追加専用キーで、移行互換として読み込みます。
 
 ```js
 {
@@ -175,7 +177,7 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 }
 ```
 
-同期確認後はタスクIDで重複排除しながら選択中の保存先へ反映し、保存成功後にだけ保留キーを削除します。
+同期確認後は授業ごとにsync最新値を読み直し、タスクID単位でoutbox操作を適用します。成功した操作だけをoutboxから削除し、ローカルミラーも更新します。
 
 ## 壊してはいけない不変条件
 

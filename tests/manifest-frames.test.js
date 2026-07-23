@@ -17,8 +17,8 @@ assert.ok(taskEntry.matches.includes(lmsMatch), "タスク UI は LMS 配下を�
 assert.equal(taskEntry.all_frames, true, "右サイド iframe にもタスク UI を読み込む");
 assert.deepEqual(
   taskEntry.js,
-  ["src/core/sync-guard.js", "src/core/mutation-lock.js", "src/core/task-lifecycle.js", "src/lms/content.js"],
-  "同期ガード、共通変更ロック、タスク日時処理を content.js より先に読み込む"
+  ["src/core/sync-guard.js", "src/core/mutation-lock.js", "src/core/task-lifecycle.js", "src/core/local-task-store.js", "src/lms/content.js"],
+  "同期ガード、共通変更ロック、タスク日時処理、ローカルミラーを content.js より先に読み込む"
 );
 
 assert.equal(

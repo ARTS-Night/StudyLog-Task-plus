@@ -4,6 +4,8 @@
   const DEVICE_KEY = "__device__";
   const PENDING_ADDS_KEY = "__pending_task_adds__";
   const PENDING_ADD_PREFIX = "__pending_task_add__:";
+  const PENDING_OPS_KEY = "__task_pending_ops__";
+  const MIRROR_PREFIX = "__task_sync_mirror__:";
   const PENDING_FLUSH_LOCK = "stalog-task-pending-flush";
   let mode = "sync";
   let changingModeTo = null;
@@ -689,6 +691,7 @@
           const hasPending = Object.entries(localItems).some(([key, value]) =>
             key.startsWith(PENDING_ADD_PREFIX)
             || key === PENDING_ADDS_KEY && Array.isArray(value) && value.length > 0
+            || key === PENDING_OPS_KEY && value && typeof value === "object" && Object.keys(value).length > 0
           );
           if (hasPending) {
             showStatus("同期確認待ちのタスクがあります。専用タスク画面で保存完了後に切り替えてください");
@@ -1055,11 +1058,13 @@
           }
 
           const pendingKeys = Object.keys(localItems).filter((key) =>
-            key === PENDING_ADDS_KEY || key.startsWith(PENDING_ADD_PREFIX)
+            key === PENDING_ADDS_KEY || key === PENDING_OPS_KEY || key.startsWith(PENDING_ADD_PREFIX)
+              || mode === "sync" && key.startsWith(MIRROR_PREFIX)
           );
           const hasLegacyPending = Array.isArray(localItems[PENDING_ADDS_KEY])
             && localItems[PENDING_ADDS_KEY].length > 0;
           const hasPending = hasLegacyPending
+            || pendingKeys.includes(PENDING_OPS_KEY)
             || pendingKeys.some((key) => key.startsWith(PENDING_ADD_PREFIX));
           if (keys.length === 0 && !hasPending) {
             showStatus("削除するデータはありませんでした");

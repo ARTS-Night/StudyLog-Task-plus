@@ -57,6 +57,7 @@
         "src/core/sync-guard.js",
         "src/core/mutation-lock.js",
         "src/core/task-lifecycle.js",
+        "src/core/local-task-store.js",
         "src/lms/content.js"
       ],
       "run_at": "document_idle",

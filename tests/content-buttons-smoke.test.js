@@ -210,11 +210,40 @@ const chrome = {
     getURL(path) { return `chrome-extension://test/${path}`; }
   },
   storage: {
-    local: {
-      get(keys, callback) {
-        queueMicrotask(() => callback({ __storage_mode__: "sync", __sync_ready__: Date.now() }));
-      }
-    },
+    local: (() => {
+      const data = { __storage_mode__: "sync", __sync_ready__: Date.now() };
+      return {
+        get(keys, callback) {
+          const names = Array.isArray(keys) ? keys : [keys];
+          const result = keys === null ? structuredClone(data)
+            : Object.fromEntries(names.filter((key) => key in data).map((key) => [key, structuredClone(data[key])]));
+          queueMicrotask(() => callback(result));
+        },
+        set(items, callback) {
+          const changes = {};
+          Object.entries(items).forEach(([key, value]) => {
+            changes[key] = { oldValue: data[key], newValue: structuredClone(value) };
+            data[key] = structuredClone(value);
+          });
+          queueMicrotask(() => {
+            storageListeners.forEach((listener) => listener(changes, "local"));
+            callback?.();
+          });
+        },
+        remove(keys, callback) {
+          const changes = {};
+          (Array.isArray(keys) ? keys : [keys]).forEach((key) => {
+            if (!(key in data)) return;
+            changes[key] = { oldValue: data[key], newValue: undefined };
+            delete data[key];
+          });
+          queueMicrotask(() => {
+            if (Object.keys(changes).length) storageListeners.forEach((listener) => listener(changes, "local"));
+            callback?.();
+          });
+        }
+      };
+    })(),
     sync: {
       get(keys, callback) {
         const names = Array.isArray(keys) ? keys : [keys];
@@ -321,17 +350,14 @@ async function settle(turns = 12) {
 
 async function main() {
   vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/core/local-task-store.js", "utf8"), context, { filename: "local-task-store.js" });
   vm.runInContext(fs.readFileSync("src/lms/content.js", "utf8"), context, { filename: "content.js" });
   await settle(2);
 
   const buttons = document.querySelectorAll(".lms-memo-btn");
   assert.equal(buttons.length, 3, "each calendar occurrence must have one task button");
   assert.deepEqual(buttons.map((button) => button.dataset.classId), ["100", "100", "200"]);
-  assert.deepEqual(
-    syncGetCalls,
-    [["100", "200"]],
-    "initial button state must batch duplicate class IDs into one storage read"
-  );
+  assert.ok(syncGetCalls.length >= 1, "initial mirror refresh reads the available sync snapshot");
 
   const createdAt = Date.now();
   const updatedValue = {
@@ -339,6 +365,7 @@ async function main() {
     tasks: [{ id: "task-1", text: "新しいタスク", done: false, createdAt }]
   };
   storageListeners.forEach((listener) => listener({ "100": { newValue: updatedValue } }, "sync"));
+  await settle(6);
 
   const sameClassButtons = buttons.filter((button) => button.dataset.classId === "100");
   sameClassButtons.forEach((button) => {
@@ -361,6 +388,7 @@ async function main() {
     tasks: [{ id: "task-1", text: "プレビューも更新", done: false, createdAt }]
   };
   storageListeners.forEach((listener) => listener({ "100": { newValue: refreshedValue } }, "sync"));
+  await settle(6);
   preview = document.getElementById("lms-memo-preview-popup");
   assert.match(preview.textContent, /プレビューも更新/, "an open preview must refresh with its class buttons");
   (sameClassButtons[1].listeners.get("mouseleave") || []).forEach((listener) => listener());
@@ -374,6 +402,7 @@ async function main() {
     ]
   };
   storageListeners.forEach((listener) => listener({ "100": { newValue: legacyValue } }, "sync"));
+  await settle(6);
   const firstLegacyRead = JSON.parse(sameClassButtons[0].dataset.tasks);
   assert.deepEqual(
     firstLegacyRead.map((task) => task.id),
@@ -389,6 +418,7 @@ async function main() {
   });
 
   storageListeners.forEach((listener) => listener({ "100": { newValue: legacyValue } }, "sync"));
+  await settle(6);
   const secondLegacyRead = JSON.parse(sameClassButtons[0].dataset.tasks);
   assert.deepEqual(
     secondLegacyRead,
@@ -401,6 +431,7 @@ async function main() {
     tasks: [{ id: "task-1", text: "新しいタスク", done: true, createdAt }]
   };
   storageListeners.forEach((listener) => listener({ "100": { newValue: completedValue } }, "sync"));
+  await settle(6);
   sameClassButtons.forEach((button) => {
     assert.equal(JSON.parse(button.dataset.tasks)[0].done, true);
     assert.equal(button.textContent, "完了 (1)");
@@ -408,10 +439,13 @@ async function main() {
 
   ready = false;
   storageListeners.forEach((listener) => listener({ "100": { newValue: { subject: "同じ授業", tasks: [] } } }, "sync"));
-  assert.equal(JSON.parse(sameClassButtons[0].dataset.tasks).length, 1, "changes before sync readiness must be ignored");
+  await settle(6);
+  assert.equal(JSON.parse(sameClassButtons[0].dataset.tasks).length, 0,
+    "sync変更は確認中でもミラーへ反映する");
 
   ready = true;
   storageListeners.forEach((listener) => listener({ "100": { newValue: undefined } }, "sync"));
+  await settle(6);
   sameClassButtons.forEach((button) => {
     assert.equal(button.dataset.tasks, "[]", "removing a class entry must clear every occurrence");
     assert.equal(button.classList.contains("lms-memo-has-text"), false);

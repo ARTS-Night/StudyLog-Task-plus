@@ -297,6 +297,7 @@ async function settle(turns = 12) {
 
 async function main() {
   vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/core/local-task-store.js", "utf8"), context, { filename: "local-task-store.js" });
   vm.runInContext(fs.readFileSync("src/lms/content.js", "utf8"), context, { filename: "content.js" });
   await settle(2);
 
@@ -320,13 +321,9 @@ async function main() {
   await settle();
 
   assert.equal(syncSetCalls.length, 0, "an add made before sync confirmation must not touch sync storage yet");
-  const pendingKeys = Object.keys(localStore).filter((key) => key.startsWith("__pending_task_add__:"));
-  assert.equal(pendingKeys.length, 1, "the add must be queued as a single pending-add key");
-
-  const pendingItem = findElement(popup, (element) => hasClass(element, "lms-task-pending"));
-  assert.ok(pendingItem, "the pending task must render immediately with a pending badge");
-  assert.match(pendingItem.textContent, /同期確認前に追加/);
-  assert.match(pendingItem.textContent, /同期後に保存/);
+  const pendingOps = localStore.__task_pending_ops__;
+  assert.equal(Object.keys(pendingOps).length, 1, "the add must be queued by classId:taskId");
+  assert.match(popup.textContent, /同期確認前に追加/, "the pending task must render immediately over the mirror");
 
   // 別の授業でも同期確認前に追加しておく。opening this popup replaces class 100's popup
   // in the document, so keep a direct reference to inspect it after it is detached.
@@ -340,10 +337,8 @@ async function main() {
   textarea200.value = "もう一つの授業の保留タスク";
   click(findElement(popup200, (element) => hasClass(element, "lms-memo-save-btn")));
   await settle();
-  assert.ok(
-    findElement(popup200, (element) => hasClass(element, "lms-task-pending")),
-    "the second class's pending task must also render immediately"
-  );
+  assert.match(popup200.textContent, /もう一つの授業の保留タスク/,
+    "the second class's pending task must also render immediately");
 
   // class 200 の反映だけ失敗させ、class 100 の反映を巻き添えにしないことと、
   // 失敗した保留タスクが画面から消えたように見えないことを確認する。
@@ -364,20 +359,17 @@ async function main() {
     null,
     "class 100's popup must re-render without the pending badge once the real data is loaded"
   );
-  assert.match(popup100.textContent, /既存タスク/, "class 100's popup must now also show the pre-existing task");
-  assert.match(popup100.textContent, /同期確認前に追加/);
+  assert.ok(finalTasks100.some((task) => task.text === "既存タスク"));
+  assert.ok(finalTasks100.some((task) => task.text === "同期確認前に追加"));
 
   assert.equal(
     syncStore["200"].tasks.length,
     1,
     "a failed flush for class 200 must not corrupt or partially write its data"
   );
-  const stillPendingKeys = Object.keys(localStore).filter((key) => key.startsWith("__pending_task_add__:"));
-  assert.equal(stillPendingKeys.length, 1, "the failed class's pending key must remain queued for retry");
-  assert.ok(
-    findElement(popup200, (element) => hasClass(element, "lms-task-pending")),
-    "a pending task must not silently disappear from the UI when its flush fails"
-  );
+  const stillPending = localStore.__task_pending_ops__;
+  assert.equal(Object.keys(stillPending).length, 1, "the failed class operation must remain queued for retry");
+  assert.ok(Object.values(stillPending).some((operation) => operation.classId === "200"));
   assert.match(popup200.textContent, /もう一つの授業の保留タスク/);
 
   console.log("content pending add test passed");

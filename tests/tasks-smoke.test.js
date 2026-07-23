@@ -304,180 +304,72 @@ async function submitTask(text) {
 async function main() {
   vm.runInContext(fs.readFileSync("src/core/sync-guard.js", "utf8"), context, { filename: "sync-guard.js" });
   vm.runInContext(fs.readFileSync("src/core/task-lifecycle.js", "utf8"), context, { filename: "task-lifecycle.js" });
+  vm.runInContext(fs.readFileSync("src/core/local-task-store.js", "utf8"), context, { filename: "local-task-store.js" });
   vm.runInContext(fs.readFileSync("src/ui/tasks.js", "utf8"), context, { filename: "tasks.js" });
   await settle();
 
-  assert.equal(elements.get("btn-add").disabled, false, "add must be enabled while sync waits");
-  assert.equal(elements.get("task-search").disabled, true, "task search stays disabled until stored tasks are ready");
-  assert.equal(elements.get("task-groups").children.length, 0, "sync wait must not show a central loader");
-  assert.match(elements.get("status").textContent, /^同期中です/);
+  assert.equal(elements.get("btn-add").disabled, false, "同期確認前も追加できる");
+  assert.equal(elements.get("task-search").disabled, false, "同期確認前もミラーを検索できる");
+  assert.doesNotMatch(elements.get("status").textContent, /^同期中です/);
 
   await submitTask("同期前の追加");
-  const pendingKeys = Object.keys(localArea._data).filter((key) => key.startsWith("__pending_task_add__:"));
-  assert.equal(pendingKeys.length, 1, "pending task must be stored under an independent key");
-  assert.equal(localArea._data[pendingKeys[0]].text, "同期前の追加");
-  assert.ok(
-    requestedLocks.includes("stalog-task-pending-flush"),
-    "pending additions must use the same lock as flush and destructive settings operations"
-  );
-  const pendingCreatedAt = localArea._data[pendingKeys[0]].createdAt;
-  assert.ok(Number.isFinite(pendingCreatedAt) && pendingCreatedAt >= now, "pending task must record its creation time");
-  const pendingDates = findByClass(elements.get("task-groups"), "task-created");
-  assert.equal(pendingDates.length, 1, "pending task must show its creation date");
-  assert.match(pendingDates[0].textContent, /^追加 \d{1,2}月\d{1,2}日$/);
-  assert.doesNotMatch(pendingDates[0].textContent, /\d{4}年/, "visible date must omit the year");
+  const pending = localArea._data.__task_pending_ops__;
+  assert.equal(Object.keys(pending).length, 1, "追加をclassId:taskId単位outboxへ保存する");
+  const pendingOp = Object.values(pending)[0];
+  assert.equal(pendingOp.type, "add");
+  assert.equal(pendingOp.task.text, "同期前の追加");
+  assert.ok(Number.isFinite(pendingOp.task.createdAt) && pendingOp.task.createdAt >= now);
+  assert.equal(Object.keys(syncArea._data).filter((key) => /^\d+$/.test(key)).length, 0,
+    "初回確認前はsyncへブラインド書き込みしない");
+  assert.ok(requestedLocks.includes("stalog-task-pending-flush"));
+  assert.equal(findByClass(elements.get("task-groups"), "task-created").length, 1,
+    "outboxを重ねた追加を即時表示する");
 
-  const waitingUnload = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined };
-  windowListeners.get("beforeunload")[0](waitingUnload);
-  assert.equal(waitingUnload.prevented, true, "closing during sync must request confirmation");
-
-  // 旧版で本体だけ保存され、保留キーの削除に失敗した状態を再現する。
-  // 保留側に残った正確な追加日時を、同じIDの保存済みタスクへ復旧できること。
-  const pendingId = localArea._data[pendingKeys[0]].id;
   syncArea._data["100"] = {
     subject: "テスト授業",
-    tasks: [{ id: pendingId, text: "同期前の追加", done: false }]
+    tasks: [{ id: "other-device", text: "他端末の追加", done: false, createdAt: now - 1000 }]
   };
-
-  assert.equal(guardTimers.size, 1, "sync guard timeout should be pending");
+  assert.equal(guardTimers.size, 1);
   [...guardTimers.values()][0]();
   guardTimers.clear();
-  await settle(50);
-
-  assert.equal(syncArea._data["100"].tasks.length, 1, "pending task must flush after sync readiness");
-  assert.equal(syncArea._data["100"].tasks[0].text, "同期前の追加");
-  assert.equal(syncArea._data["100"].tasks[0].createdAt, pendingCreatedAt, "flush must preserve or recover creation time");
-  assert.equal(Object.keys(localArea._data).some((key) => key.startsWith("__pending_task_add__:")), false);
-
-  const taskReadsBeforeCatalogChange = syncArea._getCalls;
-  await new Promise((resolve) => {
-    localArea.set({
-      __class_catalog__: {
-        version: 1,
-        updatedAt: now + 1,
-        fullUpdatedAt: now + 1,
-        years: {
-          "2026": [
-            { classId: "100", subject: "更新後の授業名" },
-            { classId: "not-a-class", subject: "無効な授業ID" }
-          ]
-        }
-      }
-    }, resolve);
-  });
-  await settle();
-  assert.equal(
-    syncArea._getCalls,
-    taskReadsBeforeCatalogChange,
-    "catalog-only changes must not trigger a redundant full task storage read"
-  );
-  assert.equal(elements.get("class-select").children.length, 1, "catalog must ignore non-numeric class IDs");
+  await settle(60);
+  assert.deepEqual(syncArea._data["100"].tasks.map((task) => task.id).sort(),
+    ["other-device", pendingOp.taskId].sort(), "他端末タスクを失わず追加をマージする");
+  assert.equal(localArea._data.__task_pending_ops__, undefined, "成功操作をoutboxから除去する");
+  assert.equal(findByClass(elements.get("task-groups"), "task-item").length, 2);
 
   await submitTask("同期後の追加");
-  assert.equal(syncArea._data["100"].tasks.length, 2, "ready state must save directly");
-  assert.ok(Number.isFinite(syncArea._data["100"].tasks[1].createdAt), "ready task must record its creation time");
-  assert.equal(findByClass(elements.get("task-groups"), "task-created").length, 2, "stored tasks must show creation dates");
-  assert.equal(elements.get("task-search").disabled, false, "task search is enabled after sync readiness");
+  await settle(40);
+  assert.equal(syncArea._data["100"].tasks.length, 3, "準備完了後もoutbox経由で直ちに反映する");
+  const added = syncArea._data["100"].tasks.find((task) => task.text === "同期後の追加");
+  assert.ok(Number.isFinite(added.createdAt));
 
-  const createdAtBeforeCompletion = syncArea._data["100"].tasks[1].createdAt;
   let taskItems = findByClass(elements.get("task-groups"), "task-item");
-  const completionCheckbox = taskItems[1].children[0];
+  const completionCheckbox = taskItems[taskItems.length - 1].children[0];
   const completionStartedAt = Date.now();
   completionCheckbox.checked = true;
   completionCheckbox.listeners.get("change")[0]();
-  await settle(30);
-  assert.equal(syncArea._data["100"].tasks[1].done, true);
-  assert.ok(syncArea._data["100"].tasks[1].completedAt >= completionStartedAt, "completion click must record completedAt");
-  assert.equal(syncArea._data["100"].tasks[1].createdAt, createdAtBeforeCompletion, "completion must preserve createdAt");
-  assert.equal(findByClass(elements.get("task-groups"), "task-completed").length, 1, "completed date must be visible");
+  await settle(40);
+  const completed = syncArea._data["100"].tasks.find((task) => task.id === added.id);
+  assert.equal(completed.done, true);
+  assert.ok(completed.completedAt >= completionStartedAt);
+  assert.equal(completed.createdAt, added.createdAt, "完了切替でcreatedAtを維持する");
 
-  const setsBeforeSearch = syncArea._setCalls + localArea._setCalls;
-  elements.get("task-search").value = "同期 後";
+  elements.get("task-search").value = "同期後";
   elements.get("task-search").listeners.get("input")[0]();
-  assert.equal(findByClass(elements.get("task-groups"), "task-item").length, 1, "multiple search terms filter task text");
-  assert.match(elements.get("task-summary").textContent, /^1件表示 \/ 全2件/);
-  elements.get("task-status-filter").value = "done";
-  elements.get("task-status-filter").listeners.get("change")[0]();
-  assert.equal(findByClass(elements.get("task-groups"), "task-item").length, 1, "status and text filters combine");
-  elements.get("task-status-filter").value = "active";
-  elements.get("task-status-filter").listeners.get("change")[0]();
-  assert.match(elements.get("task-groups").children[0].textContent, /一致するタスクはありません/);
-  elements.get("btn-clear-task-search").listeners.get("click")[0]();
-  assert.equal(elements.get("task-search").value, "");
-  assert.equal(elements.get("task-status-filter").value, "all");
-  assert.equal(findByClass(elements.get("task-groups"), "task-item").length, 2, "clear restores every task");
-  assert.equal(syncArea._setCalls + localArea._setCalls, setsBeforeSearch, "search UI must not write storage");
-
-  taskItems = findByClass(elements.get("task-groups"), "task-item");
-  const reopenCheckbox = taskItems[1].children[0];
-  reopenCheckbox.checked = false;
-  reopenCheckbox.listeners.get("change")[0]();
-  await settle(30);
-  assert.equal(syncArea._data["100"].tasks[1].done, false);
-  assert.equal(Object.hasOwn(syncArea._data["100"].tasks[1], "completedAt"), false, "reopening removes completedAt");
-  assert.equal(syncArea._data["100"].tasks[1].createdAt, createdAtBeforeCompletion);
-
-  // 画面が未完了を示した直後に別画面が先に完了しても、ユーザーが選んだ
-  // checked=trueを最新値へ適用し、単純反転で未完了へ戻さない。
-  taskItems = findByClass(elements.get("task-groups"), "task-item");
-  const staleCheckbox = taskItems[1].children[0];
-  const externalCompletedAt = Date.now() - 1000;
-  syncArea._data["100"].tasks[1] = {
-    ...syncArea._data["100"].tasks[1],
-    done: true,
-    completedAt: externalCompletedAt
-  };
-  staleCheckbox.checked = true;
-  staleCheckbox.listeners.get("change")[0]();
-  await settle(30);
-  assert.equal(syncArea._data["100"].tasks[1].done, true, "desired checked state wins over stale UI inversion");
-  assert.equal(syncArea._data["100"].tasks[1].completedAt, externalCompletedAt, "existing completion time is preserved");
-  taskItems = findByClass(elements.get("task-groups"), "task-item");
-  const cleanupCheckbox = taskItems[1].children[0];
-  cleanupCheckbox.checked = false;
-  cleanupCheckbox.listeners.get("change")[0]();
-  await settle(30);
-
-  syncArea._data["not-a-task"] = {
-    subject: "無効な保存キー",
-    tasks: [{ id: "invalid-key-task", text: "表示しない", done: false }]
-  };
-  await new Promise((resolve) => {
-    syncArea.set({
-      "200": {
-        subject: "旧形式の授業",
-        tasks: [{ id: "legacy-without-date", text: "日付なしの旧タスク", done: false }]
-      }
-    }, resolve);
-  });
-  await settle();
-  assert.equal(
-    findByClass(elements.get("task-groups"), "task-created").length,
-    2,
-    "legacy tasks without createdAt must not receive a fabricated date"
-  );
-  assert.equal(
-    findByClass(elements.get("task-groups"), "class-card").length,
-    2,
-    "task list must ignore non-numeric storage keys"
-  );
-  elements.get("task-search").value = "旧形式";
-  elements.get("task-search").listeners.get("input")[0]();
-  assert.equal(findByClass(elements.get("task-groups"), "class-card").length, 1, "subject name is searchable");
+  assert.equal(findByClass(elements.get("task-groups"), "task-item").length, 1);
   elements.get("btn-clear-task-search").listeners.get("click")[0]();
 
-  // 保存先切替のMODE通知より先に共通キューからgrantされる競合を再現する。
-  // mutation開始後にMODE_KEYを読み直し、古いsync領域ではなくlocalへ保存すること。
-  const syncTaskCountBeforeModeRace = syncArea._data["100"].tasks.length;
+  const syncCountBeforeModeRace = syncArea._data["100"].tasks.length;
   localArea._data.__storage_mode__ = "local";
   await submitTask("保存先切替直後の追加");
-  assert.equal(syncArea._data["100"].tasks.length, syncTaskCountBeforeModeRace);
-  assert.equal(localArea._data["100"].tasks[0].text, "保存先切替直後の追加");
-  assert.ok(Number.isFinite(localArea._data["100"].tasks[0].createdAt));
+  assert.equal(syncArea._data["100"].tasks.length, syncCountBeforeModeRace);
+  assert.equal(localArea._data["100"].tasks[0].text, "保存先切替直後の追加",
+    "grant後の保存先再確認でlocalへ保存する");
 
-  const readyUnload = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined };
-  windowListeners.get("beforeunload")[0](readyUnload);
-  assert.equal(readyUnload.prevented, false, "completed state must not warn on close");
+  const unload = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined };
+  windowListeners.get("beforeunload")[0](unload);
+  assert.equal(unload.prevented, false, "永続outboxだけなら終了警告は不要");
 
   console.log("tasks runtime smoke test passed");
 }

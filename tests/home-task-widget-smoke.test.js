@@ -157,7 +157,25 @@ const chrome = {
   runtime: { lastError: null, getURL: (path) => `chrome-extension://test/${path}` },
   storage: {
     sync: syncStorage,
-    local: { get(keys, callback) { queueMicrotask(() => callback({ __storage_mode__: "sync", __sync_ready__: Date.now() })); } },
+    local: (() => {
+      const data = { __storage_mode__: "sync", __sync_ready__: Date.now() };
+      Object.entries(stored).forEach(([classId, entry]) => {
+        if (/^\d+$/.test(classId)) data["__task_sync_mirror__:" + classId] = structuredClone(entry);
+      });
+      return {
+        get(keys, callback) {
+          const names = Array.isArray(keys) ? keys : [keys];
+          const result = keys === null ? structuredClone(data)
+            : Object.fromEntries(names.filter((key) => key in data).map((key) => [key, structuredClone(data[key])]));
+          queueMicrotask(() => callback(result));
+        },
+        set(items, callback) { Object.assign(data, structuredClone(items)); queueMicrotask(() => callback?.()); },
+        remove(keys, callback) {
+          (Array.isArray(keys) ? keys : [keys]).forEach((key) => delete data[key]);
+          queueMicrotask(() => callback?.());
+        }
+      };
+    })(),
     onChanged: {
       addListener(listener) { storageListeners.push(listener); },
       removeListener(listener) { const index = storageListeners.indexOf(listener); if (index >= 0) storageListeners.splice(index, 1); }
@@ -200,6 +218,7 @@ const context = {
 context.window = context;
 context.window.top = context.window;
 context.window.location = { pathname: "/lms/", reload() {} };
+vm.runInNewContext(fs.readFileSync("src/core/local-task-store.js", "utf8"), context, { filename: "local-task-store.js" });
 vm.runInNewContext(fs.readFileSync("src/lms/content.js", "utf8"), context, { filename: "content.js" });
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
