@@ -22,6 +22,8 @@ jobs:
           python-version: '3.x'
 
       # 3. Google 公式 API ライブラリのインストール
+      #    OAuth ユーザー認証（refresh token）の検証・更新には google-auth だけで足り、
+      #    google-auth-oauthlib はローカルでの初回同意フロー専用なので CI 側では不要。
       - name: Install Google API client
         run: |
           pip install --no-cache-dir google-api-python-client google-auth
@@ -39,29 +41,39 @@ jobs:
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
       # 5. ZIP のアップロード ＆ 個別 Markdown ファイルの直接アップロード（同名なら上書き）
+      #    サービスアカウントには保存容量が割り当てられておらず、フォルダを共有しても
+      #    storageQuotaExceeded で失敗するため、実際の Google ユーザーとして認証する
+      #    OAuth（refresh token）方式を使う。
       - name: Upload Files to Google Drive via Official API
         env:
-          GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: |
           python - << 'EOF'
           import os
           import sys
-          import json
           import mimetypes
-          from google.oauth2.service_account import Credentials
+          from google.oauth2.credentials import Credentials
+          from google.auth.transport.requests import Request
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaFileUpload
           from googleapiclient.errors import HttpError
 
           # 1. 環境変数のセットアップ（secret に混入しがちな前後の空白・改行を除去）
-          sa_info = json.loads(os.environ['GDRIVE_SA_KEY'])
-          folder_id = os.environ['GDRIVE_FOLDER_ID'].strip()
-          zip_file_name = os.environ['ZIP_NAME'].strip()
+          def required_env(name):
+              value = os.environ.get(name, '').strip()
+              if not value:
+                  print(f"エラー: {name} が空です。リポジトリの Secrets を確認してください。")
+                  sys.exit(1)
+              return value
 
-          if not folder_id:
-              print("エラー: GDRIVE_FOLDER_ID が空です。リポジトリの Secrets を確認してください。")
-              sys.exit(1)
+          client_id = required_env('GDRIVE_CLIENT_ID')
+          client_secret = required_env('GDRIVE_CLIENT_SECRET')
+          refresh_token = required_env('GDRIVE_REFRESH_TOKEN')
+          folder_id = required_env('GDRIVE_FOLDER_ID')
+          zip_file_name = os.environ['ZIP_NAME'].strip()
 
           # ★直接配置＆上書きしたいマークダウンファイル群（ここを自由に増やせます！）
           MD_FILES = [
@@ -70,24 +82,36 @@ jobs:
               '344赤池璃月_研究資料.md' #md ファイル名（必要に応じて書き換えてください）
           ]
 
-          # 2. 認証情報の作成
-          creds = Credentials.from_service_account_info(
-              sa_info,
+          # 2. 認証情報の作成（実際の Google ユーザーとして、refresh token からアクセストークンを取得）
+          creds = Credentials(
+              token=None,
+              refresh_token=refresh_token,
+              token_uri='https://oauth2.googleapis.com/token',
+              client_id=client_id,
+              client_secret=client_secret,
               scopes=['https://www.googleapis.com/auth/drive.file']
           )
+          try:
+              creds.refresh(Request())
+          except Exception as error:
+              print(
+                  "エラー: refresh token からアクセストークンを取得できませんでした。\n"
+                  "GDRIVE_CLIENT_ID / GDRIVE_CLIENT_SECRET / GDRIVE_REFRESH_TOKEN が正しいか、"
+                  "refresh token が失効・取り消されていないか確認してください。"
+              )
+              raise error
+
           service = build('drive', 'v3', credentials=creds)
-          service_account_email = sa_info.get('client_email', '(不明)')
-          print(f"サービスアカウント: {service_account_email}")
+          print("認証: OAuth ユーザーアカウント（refresh token）で認証しました")
 
           def die_with_permission_hint(error, folder_id):
-              # サービスアカウントは対象フォルダを共有されていないと 404 (File not found) を返す。
+              # 認証したアカウントが対象フォルダへアクセスできないと 404 (File not found) を返す。
               # 403 ではなく 404 になるのは、権限が無いことを教えないための Drive API の仕様。
               if isinstance(error, HttpError) and error.resp is not None and error.resp.status == 404:
                   print(
                       f"エラー: フォルダ (ID: {folder_id}) が見つかりません。\n"
-                      f"多くの場合、Google Drive 上でこのフォルダを "
-                      f"サービスアカウント（{service_account_email}）に「編集者」として共有していないことが原因です。\n"
-                      "フォルダを共有するか、GDRIVE_FOLDER_ID の値が正しいか確認してください。"
+                      "GDRIVE_FOLDER_ID の値が正しいか、認証に使った Google アカウントが"
+                      "このフォルダへアクセスできるか確認してください。"
                   )
               raise error
 
