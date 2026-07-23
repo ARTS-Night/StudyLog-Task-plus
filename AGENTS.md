@@ -281,6 +281,9 @@ Get-ChildItem -Path src -Recurse -File -Filter *.js | ForEach-Object { node --ch
 - `StudyLog-Task-plus.zip` は上記と別の、追跡済み配布物です。通常のコード変更へ混ぜず、リリース依頼時だけ manifest のバージョンと内容を確認して更新します。
 - `git add .` は避け、作業対象を明示してステージしてください。
 - ユーザーから依頼がない限り、コミットやプッシュを行わないでください。
+- `.github/workflows/upload-to-drive.yml` は `main` への push（または手動実行）のたびに、`src`・`image`・`README.md`・`manifest.json` を1つの ZIP（`archive_<日付>_<コミットSHA先頭7桁>.zip`）にまとめて Google Drive へ新規アップロードするワークフローです。バージョン履歴として毎回別ファイルを残す設計で、上書き・削除は行いません。加えて `README.md` と研究文書2件（`344赤池璃月＿企画書.md` / `344赤池璃月_研究資料.md`）は同名なら上書き更新する形で個別にもアップロードします（研究文書はアップロードするだけで、改稿はしません）。
+  - 認証は Google 公式の `google-api-python-client` / `google-auth` を使うサービスアカウント方式です（Secrets: `GDRIVE_SA_KEY` に鍵JSON、`GDRIVE_FOLDER_ID` にアップロード先フォルダID）。サービスアカウントは対象フォルダを事前に「編集者」として共有しておく必要があり、共有していないと Drive API は 403 ではなく 404（`File not found`）を返します。スクリプトはこの404発生時にサービスアカウントのメールアドレスと共有手順のヒントを表示します。
+  - すべての Drive API 呼び出しに `supportsAllDrives=True` を付け、共有ドライブ配下のフォルダでも動作するようにしています。`GDRIVE_FOLDER_ID` は前後の空白・改行を除去してから使用します。
 
 ## 既知の制約と今後の候補
 
