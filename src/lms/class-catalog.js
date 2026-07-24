@@ -5,6 +5,7 @@
   const REFRESH_INTERVAL = 24 * 60 * 60 * 1000;
   const RETRY_INTERVAL = 10 * 60 * 1000;
   const MY_PAGE_PATH = "/portal/lmsinc/sMyPage.php";
+  const PARTIAL_CATALOG_LOCK = "stalog-class-catalog-home";
 
   function academicYear(date = new Date()) {
     return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
@@ -135,6 +136,12 @@
     return target;
   }
 
+  function withPartialCatalogLock(operation) {
+    return navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request(PARTIAL_CATALOG_LOCK, { mode: "exclusive" }, operation)
+      : operation();
+  }
+
   function getCatalog() {
     return new Promise((resolve, reject) => {
       chrome.storage.local.get([CATALOG_KEY], (result) => {
@@ -216,13 +223,16 @@
   async function mergePartialCatalog(partial) {
     if (Object.keys(partial).length === 0) return;
     // ホームの補助一覧は別キーに置き、マイページの完全一覧を上書きさせない。
-    const existing = await getPartialCatalog();
-    const merged = mergeInto(deserialize(existing.years), partial);
-    await setPartialCatalog({
-      version: 1,
-      source: "home",
-      updatedAt: Date.now(),
-      years: serialize(merged)
+    // 複数のLMSタブが同時に起動しても、read-modify-write同士で片方の授業を落とさない。
+    await withPartialCatalogLock(async () => {
+      const existing = await getPartialCatalog();
+      const merged = mergeInto(deserialize(existing.years), partial);
+      await setPartialCatalog({
+        version: 1,
+        source: "home",
+        updatedAt: Date.now(),
+        years: serialize(merged)
+      });
     });
   }
 

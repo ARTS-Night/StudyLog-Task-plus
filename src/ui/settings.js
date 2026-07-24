@@ -83,7 +83,7 @@
     const pending = includePending && navigator.locks && typeof navigator.locks.request === "function"
       ? navigator.locks.request(PENDING_FLUSH_LOCK, { mode: "exclusive" }, requestMutation)
       : requestMutation();
-    pending.catch(reportLockError);
+    return pending.catch(reportLockError);
   }
 
   const syncGuideEl = document.getElementById("sync-guide");
@@ -442,7 +442,7 @@
           return;
         }
 
-        runMutationExclusive((releaseMutation) => {
+        return runMutationExclusive((releaseMutation) => {
           currentArea().set(clean, () => {
             if (chrome.runtime.lastError) {
               showStatus(`保存に失敗しました: ${chrome.runtime.lastError.message}`);
