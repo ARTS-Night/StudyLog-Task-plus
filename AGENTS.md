@@ -129,6 +129,7 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 | `__google_tasks_last_error__` | 最後のGoogle Tasks同期エラー `{ message, time }`。次の送信成功で削除し、設定ページの赤枠へ表示する |
 | `__task_sync_mirror__:<classId>` | syncモードで最後に確認した授業データのローカルミラー。起動直後の表示に使い、sync変更を受けるたび更新する |
 | `__task_pending_ops__` | sync確認前を含むローカル操作の永続outbox。`classId:taskId`ごとにadd/edit/set-done/removeの最新操作を保持し、removeはtombstoneとして扱う |
+| `__task_sync_flushed_at__` | `LocalTaskStore.flush()` が `__task_pending_ops__` の内容を実際に `chrome.storage.sync` へ反映できた時刻（連続flushでも必ず増える数値）。1件以上反映できた時だけ進む。syncモードのホーム/授業ページ・ポップアップ・専用画面がこれを監視し、他のページを見ていても「同期しました」を通知する。通知印の保存失敗だけで、反映済みflushを失敗扱いにはしない |
 | `__sync_ready__` | 同期領域の到着を確認した時刻。24時間有効 |
 | `__device__` | 同期チェック用の端末ID・表示名 |
 | `__class_catalog__` | マイページ由来の完全な年度別授業一覧 |

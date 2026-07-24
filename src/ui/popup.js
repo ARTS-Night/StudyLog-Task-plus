@@ -2,6 +2,7 @@
   const content = document.getElementById("content");
   const MODE_KEY = "__storage_mode__";
   let storageMode = "sync";
+  let storageModeReady = false;
   let renderGeneration = 0;
   let renderTimer = null;
   let activeMutations = 0;
@@ -156,12 +157,15 @@
     }
     if (areaName === "local" && changes["__google_tasks_synced_at__"]
       && typeof changes["__google_tasks_synced_at__"].newValue === "number") showStatus("Google Tasksへ同期しました");
+    if (areaName === "local" && storageModeReady && storageMode === "sync"
+      && changes["__task_sync_flushed_at__"]
+      && typeof changes["__task_sync_flushed_at__"].newValue === "number") showStatus("同期しました");
     if (areaName === "local" && changes[MODE_KEY]) {
       const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== storageMode) {
-        storageMode = nextMode;
-        LocalTaskStore.init(storageMode);
-        scheduleRender();
+        // localで即時readyになったSyncGuardをsyncへ持ち越さないよう、
+        // 新しい実行コンテキストで初回同期確認からやり直す。
+        window.location.reload();
         return;
       }
     }
@@ -178,6 +182,7 @@
       return;
     }
     storageMode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
+    storageModeReady = true;
     SyncGuard.init(storageMode, result[SyncGuard.READY_KEY]);
     LocalTaskStore.init(storageMode);
     void render();

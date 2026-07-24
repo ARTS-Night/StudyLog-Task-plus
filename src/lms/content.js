@@ -16,6 +16,7 @@
   const PENDING_ADDS_LEGACY_KEY = "__pending_task_adds__";
   let storage = chrome.storage.sync;
   let storageMode = "sync";
+  let storageModeReady = false;
   // 初回同期の確認前に追加された保留タスクを、確認後にまとめて反映した完了合図。
   // 各ポップアップはこれを待ってから実データを読み直し、反映前の空データを読まないようにする。
   let pendingAddsFlushed = Promise.resolve();
@@ -201,6 +202,7 @@
     // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
     const mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
     storageMode = mode;
+    storageModeReady = true;
     if (mode === "local") {
       storage = chrome.storage.local;
     }
@@ -260,6 +262,11 @@
       if (changes["__google_tasks_last_error__"] && changes["__google_tasks_last_error__"].newValue) {
         const lastError = changes["__google_tasks_last_error__"].newValue;
         showToast(`Google Tasks同期エラー: ${lastError.message || "不明なエラー"}`);
+      }
+      if (storageModeReady && storageMode === "sync"
+        && changes["__task_sync_flushed_at__"]
+        && typeof changes["__task_sync_flushed_at__"].newValue === "number") {
+        showToast("同期しました");
       }
     }
 

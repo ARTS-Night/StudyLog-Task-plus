@@ -40,8 +40,9 @@
       if (response.status === 401) await forgetToken(refreshedToken);
     }
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      const error = new Error(`Google APIへのリクエストに失敗しました (${response.status}) ${text}`);
+      // API応答本文にはリクエスト値（タスク本文など）が含まれる場合がある。
+      // このエラーは同期エラーキーへ永続化されUIにも表示されるため、本文を混ぜない。
+      const error = new Error(`Google APIへのリクエストに失敗しました (${response.status})`);
       error.status = response.status;
       throw error;
     }

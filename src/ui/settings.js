@@ -348,27 +348,41 @@
   driveBackupButton.addEventListener("click", () => {
     // 初回同期の確認前にバックアップすると、まだ届いていないタスクが欠けた不完全な内容になる
     if (mode === "sync" && syncBlocked()) return;
+    const requestedMode = mode;
     driveBackupButton.disabled = true;
     // 自動同期(Service Worker)と同じFIFOで直列化し、読み取りから書き込み完了までを
     // 1区間にする。素通しで書くと、読み取り後に進んだ自動プッシュの新しいDrive内容を
     // 古いスナップショットで巻き戻してしまう
     TaskMutationLock.request(() => new Promise((resolve, reject) => {
-      currentArea().get(null, (items) => {
-        if (chrome.runtime.lastError || !items) {
-          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "データを読み込めませんでした"));
+      // grant待ち中の保存先変更をonChangedの到着順へ依存して判定しない。
+      chrome.storage.local.get([MODE_KEY], (modeResult) => {
+        if (chrome.runtime.lastError || !modeResult) {
+          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
           return;
         }
-        const data = Object.fromEntries(taskEntries(items));
-        DriveSync.writeTasksFile(data)
-          .then((updatedAt) => new Promise((done) => {
-            // 自動同期がこのバックアップを「未知の新しいスナップショット」と誤解して
-            // 取り込み直さないよう、同期済み時刻も進める
-            chrome.storage.local.set({ [DRIVE_SYNCED_AT_KEY]: updatedAt }, () => {
-              void chrome.runtime.lastError;
-              done();
-            });
-          }))
-          .then(resolve, reject);
+        const actualMode = normalizeMode(modeResult[MODE_KEY]);
+        if (actualMode !== requestedMode) {
+          reject(new Error("保存先が別の画面で変更されました。内容を確認してもう一度お試しください"));
+          return;
+        }
+        const area = actualMode === "sync" ? chrome.storage.sync : chrome.storage.local;
+        area.get(null, (items) => {
+          if (chrome.runtime.lastError || !items) {
+            reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "データを読み込めませんでした"));
+            return;
+          }
+          const data = Object.fromEntries(taskEntries(items));
+          DriveSync.writeTasksFile(data)
+            .then((updatedAt) => new Promise((done, fail) => {
+              // 自動同期がこのバックアップを「未知の新しいスナップショット」と誤解して
+              // 取り込み直さないよう、同期済み時刻も進める
+              chrome.storage.local.set({ [DRIVE_SYNCED_AT_KEY]: updatedAt }, () => {
+                if (chrome.runtime.lastError) fail(new Error(chrome.runtime.lastError.message));
+                else done();
+              });
+            }))
+            .then(resolve, reject);
+        });
       });
     }))
       .then(() => showStatus("Googleドライブへバックアップしました"))

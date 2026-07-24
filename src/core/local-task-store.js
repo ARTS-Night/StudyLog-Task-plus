@@ -4,6 +4,7 @@ const LocalTaskStore = (() => {
   const MODE_KEY = "__storage_mode__";
   const MIRROR_PREFIX = "__task_sync_mirror__:";
   const PENDING_OPS_KEY = "__task_pending_ops__";
+  const FLUSHED_AT_KEY = "__task_sync_flushed_at__";
   const LEGACY_PENDING_KEY = "__pending_task_adds__";
   const LEGACY_PENDING_PREFIX = "__pending_task_add__:";
   const PENDING_FLUSH_LOCK = "stalog-task-pending-flush";
@@ -236,6 +237,16 @@ const LocalTaskStore = (() => {
       });
     });
   }
+  async function markFlushed() {
+    try {
+      const stored = await get(chrome.storage.local, [FLUSHED_AT_KEY]);
+      const previous = Number.isFinite(stored[FLUSHED_AT_KEY]) ? stored[FLUSHED_AT_KEY] : 0;
+      await set(chrome.storage.local, { [FLUSHED_AT_KEY]: Math.max(Date.now(), previous + 1) });
+    } catch (error) {
+      // sync反映とoutbox破棄は完了済みなので、通知印だけの失敗でflushを再試行扱いにしない。
+      console.warn("同期完了の通知印を保存できませんでした", error);
+    }
+  }
   function flush() {
     if (!SyncGuard.isReady()) return Promise.resolve(false);
     if (flushPromise) return flushPromise;
@@ -259,6 +270,7 @@ const LocalTaskStore = (() => {
         byClass.get(op.classId)[key] = op;
       });
       let succeeded = true;
+      let appliedAny = false;
       for (const [classId, operations] of byClass) {
         try {
           await withLock(CLASS_LOCK_PREFIX + classId, async () => {
@@ -275,11 +287,14 @@ const LocalTaskStore = (() => {
             }
             await discardSnapshot(operations);
           });
+          appliedAny = true;
         } catch (error) {
           succeeded = false;
           console.warn("授業" + classId + "の保留操作を反映できませんでした", error);
         }
       }
+      // 他のページを見ていても同期完了が分かるよう、実際にsyncへ反映できた時だけ通知用の印を進める。
+      if (appliedAny) await markFlushed();
       return succeeded;
     })).finally(() => { flushPromise = null; });
     return flushPromise;

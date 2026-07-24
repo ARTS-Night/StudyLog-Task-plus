@@ -589,6 +589,33 @@ async function main() {
     assert.deepEqual(runtime.localData[PENDING_KEY], {});
   }
 
+  // 手動バックフィルはライブ変更と直列化し、処理中タスクを二重作成しない。
+  {
+    let releaseCreate;
+    const runtime = createRuntime({
+      local: { __storage_mode__: "local", __google_tasks_sync_enabled__: true },
+      api: {
+        createTask: () => new Promise((resolve) => {
+          releaseCreate = () => resolve("google-serialized");
+        })
+      }
+    });
+    runtime.change("local", "1250", {
+      subject: "社会",
+      tasks: [{ id: "in-flight", text: "処理中", done: false }]
+    });
+    await settle(3);
+    const responsePromise = runtime.sendMessage({ type: "google-tasks-backfill" });
+    await settle(3);
+    assert.equal(runtime.calls.create.length, 1, "処理中のライブ作成とバックフィルを並走させない");
+    releaseCreate();
+    const response = await responsePromise;
+    await settle();
+    assert.equal(response.ok, true);
+    assert.equal(response.queued, 0, "ライブ作成後の最新IDを見てバックフィル対象から除く");
+    assert.equal(runtime.calls.create.length, 1, "同じGoogleタスクを二重作成しない");
+  }
+
   // 連携が無効な間はバックフィルを拒否する。
   {
     const runtime = createRuntime({

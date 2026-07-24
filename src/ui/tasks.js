@@ -33,6 +33,7 @@
   const statusEl = document.getElementById("status");
 
   let mode = "sync";
+  let storageModeReady = false;
   let storage = chrome.storage.sync;
   let watchedArea = "sync";
   // ローカルミラー／outboxは起動直後から操作できる。
@@ -1122,19 +1123,18 @@
       const lastError = changes["__google_tasks_last_error__"].newValue;
       showStatus(`Google Tasks同期エラー: ${lastError.message || "不明なエラー"}`, true);
     }
+    if (areaName === "local" && storageModeReady && mode === "sync"
+      && changes["__task_sync_flushed_at__"]
+      && typeof changes["__task_sync_flushed_at__"].newValue === "number") {
+      showStatus("同期しました", false);
+    }
 
     if (areaName === "local" && changes[MODE_KEY]) {
       const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== mode) {
-        mode = nextMode;
-        storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
-        watchedArea = mode;
-        if (busy) {
-          refreshAfterBusy = true;
-        } else {
-          scheduleRefresh();
-        }
-        showStatus(mode === "local" ? "保存先をこの端末に切り替えました" : "保存先を同期領域に切り替えました", false);
+        // localで即時readyになったSyncGuardをsyncへ持ち越さず、
+        // 初回同期確認を新しい実行コンテキストでやり直す。
+        window.location.reload();
         return;
       }
     }
@@ -1208,6 +1208,7 @@
     .then((result) => {
       // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
       mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
+      storageModeReady = true;
       storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
       watchedArea = mode;
       fullCatalog = normalizeCatalog(result[CATALOG_KEY]);

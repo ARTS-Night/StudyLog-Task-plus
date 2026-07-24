@@ -85,6 +85,16 @@ async function main() {
     await sync.deleteTask("list-1", "task-1");
   }
 
+  // APIエラー本文はタスク本文を含み得るため、永続表示される例外へ混ぜない
+  {
+    const secret = "表示してはいけないタスク本文";
+    const { sync } = createRuntime(async () => response(500, { error: secret }));
+    await assert.rejects(
+      () => sync.createTask("list-1", secret, false),
+      (error) => error.status === 500 && !error.message.includes(secret)
+    );
+  }
+
   console.log("google tasks sync test passed");
 }
 

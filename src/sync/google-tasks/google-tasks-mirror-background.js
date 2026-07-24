@@ -31,6 +31,14 @@
     return chain;
   }
 
+  // UIへ結果を返す操作も、ライブ変更・アラーム再試行と同じ直列化チェーンへ入れる。
+  // 呼び出し元には失敗を返しつつ、後続処理のためのchain自体は回復させる。
+  function enqueueForResponse(operation) {
+    const request = chain.then(operation);
+    chain = request.catch((error) => recordError(error));
+    return request;
+  }
+
   function errorStatus(error) {
     return error && typeof error.status === "number" ? error.status : 0;
   }
@@ -455,7 +463,7 @@
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || message.type !== "google-tasks-backfill") return undefined;
-    backfillAllClasses()
+    enqueueForResponse(backfillAllClasses)
       .then((result) => sendResponse({ ok: true, queued: result.queued }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;

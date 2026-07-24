@@ -7,10 +7,12 @@ const clone = (value) => value === undefined ? undefined : structuredClone(value
 function makeArea(name, initial) {
   const data = clone(initial);
   let writes = 0;
+  let failSetKey = null;
   const emit = (changes) => queueMicrotask(() => listeners.forEach((listener) => listener(changes, name)));
   return {
     _data: data,
     get _writes() { return writes; },
+    failSetOnce(key) { failSetKey = key; },
     get(keys, callback) {
       queueMicrotask(() => {
         if (keys === null) return callback(clone(data));
@@ -20,6 +22,15 @@ function makeArea(name, initial) {
     },
     set(items, callback) {
       writes += 1;
+      if (failSetKey && Object.prototype.hasOwnProperty.call(items, failSetKey)) {
+        failSetKey = null;
+        queueMicrotask(() => {
+          context.chrome.runtime.lastError = { message: "forced set failure" };
+          callback?.();
+          context.chrome.runtime.lastError = null;
+        });
+        return;
+      }
       const changes = {};
       Object.entries(items).forEach(([key, value]) => {
         changes[key] = { oldValue: clone(data[key]), newValue: clone(value) };
@@ -57,6 +68,7 @@ const syncEntry = {
 };
 const local = makeArea("local", {
   __storage_mode__: "sync",
+  __task_sync_flushed_at__: 9999999999999,
   "__task_sync_mirror__:100": mirrorEntry
 });
 const sync = makeArea("sync", { "100": syncEntry });
@@ -125,8 +137,20 @@ const settle = async (turns = 12) => { for (let i = 0; i < turns; i += 1) await 
   assert.equal(updated.googleTaskListId, "list-1");
   assert.equal(updated.googleTaskId, "google-1");
   assert.equal(local._data.__task_pending_ops__, undefined, "成功操作だけoutboxから削除する");
+  assert.equal(local._data.__task_sync_flushed_at__, 10000000000000,
+    "同一ミリ秒や時計の巻き戻りでも通知用の印を必ず進める");
   assert.deepEqual(lockOrder.slice(0, 3),
     ["stalog-task-pending-flush", "TaskMutationLock", "stalog-task-class:100"],
     "保留反映→共通変更→授業ロックの順序を維持する");
+
+  local.failSetOnce("__task_sync_flushed_at__");
+  await store.mutate({ type: "add", classId: "100", taskId: "notify-failure",
+    subject: "サーバー授業",
+    task: { id: "notify-failure", text: "通知失敗でも反映", done: false, createdAt: 6000 } });
+  await settle();
+  assert.ok(sync._data["100"].tasks.some((task) => task.id === "notify-failure"),
+    "通知印の保存失敗でもsync反映は成功する");
+  assert.equal(local._data.__task_pending_ops__, undefined,
+    "通知印の保存失敗だけで反映済み操作をoutboxへ戻さない");
   console.log("local first task store test passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });
