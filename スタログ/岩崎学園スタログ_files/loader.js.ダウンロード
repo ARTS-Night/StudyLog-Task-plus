@@ -1,0 +1,78 @@
+var glexa=glexa||{};$(function(){});glexa.loadLanguageForm=function(){glexa.ajax({action:'common_ajax_language_form',element:'#div-language-form'});}
+glexa.loadLoginTopic=function(){glexa.ajax({action:'common_ajax_topic_view',element:'#div-topic'});}
+glexa.loadLoginNews=function(){glexa.ajax({action:'common_ajax_news_list',element:'#div-news'});}
+glexa.loadLoginForm=function(login,lang){if(!lang){lang='';}
+return glexa.ajax({action:'common_ajax_login_form',element:'#div-login-form',params:{login:login,lang:lang}});}
+glexa.loadMessages=function(){glexa.ajax({action:'glexa_ajax_message_list',element:'#div-top-messages'});}
+glexa.loadJoinedClasses=function(classId,classArchiveId){params={};if(classId){params.class_id=classId;}
+if(classArchiveId){params.class_archive_id=classArchiveId;}
+glexa.ajax({action:'glexa_ajax_class_join_list',element:'#div-joined-classes',params:params});}
+glexa.loadTimetable=function(archiveId,mode,order){params={};if(archiveId){params.archive_id=archiveId;}
+if(order){params.o=order;}
+var modeAction='glexa_ajax_timetable_today';if(mode=='list'){modeAction='glexa_ajax_timetable_list';}else if(mode=='view'){modeAction='glexa_ajax_timetable_view';}
+glexa.ajax({action:(mode=='list'?'glexa_ajax_timetable_list':'glexa_ajax_timetable_view'),element:'#div-timetable',params:params});}
+glexa.loadTopTimetable=function(archiveId,thisWeekFirstDay){params={};if(archiveId){params.archive_id=archiveId;}
+if(thisWeekFirstDay){params.first_day=thisWeekFirstDay;}
+glexa.ajax({action:'glexa_ajax_timetable_top',element:'#div-top-timetable',params:params});}
+glexa.loadNews=function(){params={};glexa.ajax({action:'glexa_ajax_news_list',element:'#div-news',params:params});}
+glexa.loadClasses=function(archiveId){params={};if(archiveId){params.archive_id=archiveId;}
+glexa.ajax({action:'glexa_ajax_class_list',element:'#div-classes',params:params});}
+glexa.loadClipboards=function(){glexa.ajax({action:'teacher_ajax_clipboard_list',element:'#div-clipboards',params:{}});}
+glexa.loadClassDirectories=function(classId,directoryId,selectDirectoryFlg){params={}
+if(classId){params.class_id=classId;}
+if(directoryId){params.directory_id=directoryId;}
+if(selectDirectoryFlg){params.select_directory_flg=selectDirectoryFlg;}
+glexa.ajax({action:'glexa_ajax_class_directory_list',element:'#div-class-directories',params:params});}
+glexa.loadClassNews=function(classId,directoryId,type){params={};if(classId){params.class_id=classId;}
+if(directoryId){params.directory_id=directoryId;}
+params.type=type;glexa.ajax({action:'glexa_ajax_class_news_list',element:'#div-class-news',params:params});}
+glexa.loadClassMsteams=function(classId,directoryId){params={};if(classId){params.class_id=classId;}
+if(directoryId){params.directory_id=directoryId;}
+glexa.ajax({action:'addon_msteams_glexa_ajax_class_list',element:'#div-class-msteams',params:params});}
+glexa.loadClassMenu=function(classId){params={}
+if(classId){params.class_id=classId;}
+glexa.ajax({action:'glexa_ajax_class_menu_view',element:'#div-class-menu',params:params});}
+glexa.loadClassSubmenu=function(classId,mypageFlg=null){params={}
+if(classId){if(mypageFlg){params={class_id:classId,mypage_flg:mypageFlg}}else{params.class_id=classId;}}
+glexa.ajax({action:'glexa_ajax_class_submenu_view',element:'#div-class-submenu',params:params});}
+glexa.loadClassSyllabus=function(classId,directoryId){params={class_id:classId};if(directoryId){params.directory_id=directoryId;}
+glexa.ajax({action:'glexa_ajax_class_syllabus_list',element:'#div-class-syllabuses',params:params});}
+glexa.loadClassContents=function(classId,directoryId,pageType){params={}
+if(classId){params.class_id=classId;}
+if(directoryId){params.directory_id=directoryId;}
+if(pageType){params.page_type=pageType}
+glexa.ajax({action:'glexa_ajax_class_content_list',element:'#div-class-contents',params:params});}
+glexa.loadMailReceives=function(p,q,o,unread,start,end,mode){params={};if(p){params.p=p;}
+if(q){params.q=q;}
+if(o){params.o=o;}
+if(unread){params.unread=unread;}
+if(start){params.start_date=start;}
+if(end){params.end_date=end;}
+params.mode=mode;glexa.ajax({action:'glexa_ajax_mail_receive_list',element:'#div-mails',params:params});}
+glexa.loadMailSends=function(p,q,o,start,end){params={};if(p){params.p=p;}
+if(q){params.q=q;}
+if(o){params.o=o;}
+if(start){params.start_date=start;}
+if(end){params.end_date=end;}
+glexa.ajax({action:'glexa_ajax_mail_send_list',element:'#div-mails',params:params});}
+glexa.openModalMailForm=function(replyMailId,memberIds,classId,stClassId,addressEdit){var params={action:'glexa_modal_mail_form',};if(replyMailId){params.reply_mail_id=replyMailId;}
+if(classId){params.class_id=classId;}
+if(stClassId){params.student_class_id=stClassId;}
+if(memberIds){params.member_ids=memberIds;}
+if(addressEdit){params.address_edit=addressEdit;}
+glexa.openRemoteModal({action:'glexa_modal_mail_form',method:'post',params:params,});}
+glexa.openModalMailAtGrade=function(memberId,contentTitle,pluginKey,pluginId,cbFunc){var data={};data.memberId=memberId;data.contentTitle=contentTitle;data.pluginKey=pluginKey;data.pluginId=pluginId;var params={atGrade:JSON.stringify(data),};glexa.openRemoteModal({action:'glexa_modal_mail_form',params:params,cbFunc:cbFunc,});}
+glexa.openModalCheck=function(){glexa.openRemoteModal({action:'glexa_modal_check'});}
+var onLoadCalendars={};glexa.loadCalendar=function(month,postfix,element){params={};if(month){params.month=month;}
+if(postfix){params.postfix=postfix;}
+if(!element){element='#div-calendar';}
+params.element=element;glexa.ajax({action:'glexa_ajax_calendar_view',element:element,withoutLoading:true,params:params,onSuccess:function(){}});}
+glexa.loadMypage=function(memberId,classId,hash){params={member_id:memberId};if(classId){params.class_id=classId;}
+if(hash){params.hash=hash;}
+glexa.ajax({action:'glexa_ajax_mypage_view',element:'#div-mypage',withoutLoading:true,params:params});}
+glexa.loadTeams=function(classId,element,isTable,isAll,isWhole,callback){params={class_id:classId};if(isTable){params.is_table=isTable?1:0;}
+if(isAll){params.is_all=isAll;}
+if(isWhole){params.is_whole=isWhole;}
+return glexa.ajax({action:'glexa_ajax_team_list',element:element?element:'#div-teams',params:params,onSuccess:function(){if(callback)callback();}});}
+glexa.loadCourseUsages=function(o){}
+glexa.loadGlexaAccess=function(){}

@@ -1,0 +1,2 @@
+var rubric=rubric||{};$(function(){});rubric.loadPortfolioRubicEvents=function(classId){glexa.ajax({action:'addon_portfolio_student_ajax_rubric_event_list',element:'#div-portfolio-rubric-events',params:{class_id:classId}})}
+rubric.loadPortfolioActions=function(classId){glexa.ajax({action:'addon_portfolio_student_ajax_action_list',element:'#div-portfolio-actions',params:{class_id:classId}})}

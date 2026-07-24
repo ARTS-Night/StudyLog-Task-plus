@@ -1,0 +1,97 @@
+@charset "utf-8";
+
+/* =======================
+   Login
+======================== */
+.login-main {
+	background: none;
+	height: auto;
+	text-align: center;
+}
+.login-main img {
+	margin: 30px auto 0 auto;
+	width: 280px;
+}
+.login-main .lang {
+	margin-bottom:10px;
+}
+@media screen and (max-width:767px){
+	.login-main img {
+		margin:20px auto 0 auto;
+		width:200px;
+	}
+	.login .lang {
+		margin-top: 0;
+	}
+}
+
+/* =======================
+   Header
+======================== */
+header .navbar-brand {
+	padding: 6px 12px;
+}
+header .navbar-brand img {
+	height: 37px;
+}
+
+/* =======================
+   Timetable
+======================== */
+.top-timetable-table,
+.table-week-data-content,
+.table-schedule-list{
+	table-layout:fixed;
+}
+.top-timetable-table tr td,
+.table-week-data-content tr td,
+.table-schedule-list tr td{
+	width:150px;
+	white-space:normal !important;
+}
+.top-timetable-content-left{
+	width:1% !important;
+	white-space:nowrap;
+}
+.top-timetable-table-td{
+	position:relative;
+}
+.top-timetable-table-td .div-unit-index{
+	width:20px;
+	position:absolute;
+	z-index:1;
+	top:0;
+	left:0;
+	bottom:0;
+	border-right: 1px solid #e0e0e0;
+	text-align: center;
+	background-color: #efefef;
+}
+.top-timetable-table-td .div-unit-index .div-unit-index-body{
+	display:table;
+	height:100%;
+	width:100%;
+}
+.top-timetable-table-td .div-unit-index .div-unit-index-body span{
+	display:table-cell;
+}
+.top-timetable-table-td .div-class-name{
+	padding:7px 7px 7px 27px;
+}
+@media all and (-ms-high-contrast:none){
+	.top-timetable-table-td .div-class-name{
+		height:100%;
+	}
+}
+.top-timetable-table-td .div-class-name section{
+	border-bottom:1px dotted #e0e0e0;
+	padding:7px 0;
+	
+}
+.top-timetable-table-td .div-class-name section:first-child{
+	padding-top:0;
+}
+.top-timetable-table-td .div-class-name section:last-child{
+	padding-bottom:0;
+	border-bottom:none;
+}

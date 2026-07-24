@@ -1,0 +1,7 @@
+$(function(){notify.init();});var notify=notify||{};notify.timer=undefined;notify.init=function(){glexa.ajax({action:'glexa_ajax_notify_view',params:{class_id:$('#input-current-class-id').val(),},onSuccess:function(response){notify.job(response.data);},withoutLoading:true});}
+notify.job=function(job){$('.div-offline').hide();try{if(!navigator.onLine){$('.div-offline').show();}}catch(e){}
+if(job&&job.interval_sec){for(var i in job.actions){eval(job.actions[i]);}
+clearTimeout(notify.timer);notify.timer=setTimeout(function(){notify.init();},job.interval_sec*1000);}}
+notify.viewMailCount=function(mailCount){if(mailCount){$('.span-mail-count').html(mailCount);$('.span-mail-count').show('fast');}else{$('.span-mail-count').hide();}}
+notify.viewEntryStatus=function(classIds){classId=$('#input-current-class-id').val();classIds=classIds.split(',');if(classId){if($.inArray(classId,classIds)>=0){openModalClassEntry();}else{closeModalClassEntry();}}}
+notify.viewClickerStatus=function(classIds){classId=$('#input-current-class-id').val();classIds=classIds.split(',');if(classId){if($.inArray(classId,classIds)>=0){openModalClicker();}else{closeModalClicker();}}}

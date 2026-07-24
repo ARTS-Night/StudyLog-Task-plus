@@ -1,0 +1,2335 @@
+<!DOCTYPE html>
+<!-- saved from url=(0033)https://portal.iwasaki.ac.jp/lms/ -->
+<html lang="ja" class=""><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="description" content="">
+	<meta name="viewport" content="width=device-width, initial-scale = 1.0, maximum-scale = 4.0, user-scalable=yes">
+	<meta name="author" content="">
+	<meta name="robots" content="noindex">
+		<link rel="shortcut icon" href="https://portal.iwasaki.ac.jp/lms/common/images/customer/favicon.ico?2022072101">
+
+	<link rel="apple-touch-icon" href="https://portal.iwasaki.ac.jp/lms/common/images/customer/webclip.png?2022072101">
+	<!--<base href="/lms/" target="_parent">--><base href="." target="_parent">
+	<title>岩崎学園スタログ</title>
+		
+	<meta http-equiv="Pragma" content="no-cache">
+	<meta http-equiv="Cache-Control" content="no-cache">
+	<meta http-equiv="Expires" content="0">
+<meta name="format-detection" content="telephone=no">
+
+<link href="./岩崎学園スタログ_files/bootstrap.min.css" rel="stylesheet">
+<link href="./岩崎学園スタログ_files/bootstrap-timepicker.min.css" rel="stylesheet">
+<link href="./岩崎学園スタログ_files/fontawesome-all.min.css" rel="stylesheet">
+<link href="./岩崎学園スタログ_files/glexa.css" rel="stylesheet">
+
+
+	
+
+<link href="./岩崎学園スタログ_files/color.css" rel="stylesheet">
+<link href="./岩崎学園スタログ_files/standard.css" rel="stylesheet">
+	<link href="./岩崎学園スタログ_files/jquery-ui.css" rel="stylesheet">
+	<link href="./岩崎学園スタログ_files/video-js.css" rel="stylesheet" type="text/css">
+	<link href="./岩崎学園スタログ_files/jquery.fancybox.css" rel="stylesheet" media="screen">
+	<link href="./岩崎学園スタログ_files/dropzone.css" rel="stylesheet">
+	<link href="./岩崎学園スタログ_files/dropzone_custom.css" rel="stylesheet">
+	
+
+	<link href="./岩崎学園スタログ_files/customer.css" rel="stylesheet">
+
+<!--[if lt IE 9]><script src="/lms/common/js/ie8-responsive-file-warning.js"></script><![endif]-->
+<!--[if lt IE 9]>
+	<script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+	<script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+<![endif]-->
+
+<script>var urlbase='/lms/'; var lang='ja';</script>
+<script>var flashversion='14.0.0';</script>
+<script>var timeoutMessage="セッションが失われました。<br>再度ログインしてください。";</script>
+<script>
+	let sessionErrorMessage = {
+		'-3' : 'セッションが失われました。<br>再度ログインしてください。',
+		'-4' : '他のブラウザからのログインが確認されましたのでログアウトします。',
+		'0' : 'セッションが失われました。<br>再度ログインしてください。',
+	};
+</script>
+
+	<script src="./岩崎学園スタログ_files/tinymce.min.js.ダウンロード"></script>
+<!--<script src="/lms/common/js/vendor/jquery-1.11.1.min.js"></script>-->
+<script src="./岩崎学園スタログ_files/jquery-3.5.1.min.js.ダウンロード"></script>
+<!--<script src="/lms/common/js/vendor/jquery-migrate-3.3.1.min.js"></script>-->
+<script src="./岩崎学園スタログ_files/jquery-ui.min.js.ダウンロード"></script>
+<script src="./岩崎学園スタログ_files/jquery.ui.datepicker-ja.js.ダウンロード"></script>
+<script src="./岩崎学園スタログ_files/cvi_busy_lib.js.ダウンロード"></script>
+<script src="./岩崎学園スタログ_files/bootstrap.min.js.ダウンロード"></script>
+<script src="./岩崎学園スタログ_files/bootstrap-timepicker.min.js.ダウンロード"></script>
+<script src="./岩崎学園スタログ_files/glexa.js.ダウンロード"></script>
+<script src="./岩崎学園スタログ_files/loader.js.ダウンロード"></script>
+<script src="./岩崎学園スタログ_files/viewer.js.ダウンロード"></script>
+
+
+	
+
+	<script src="./岩崎学園スタログ_files/jquery.ui.touch-punch.min.js.ダウンロード"></script>
+	<script src="./岩崎学園スタログ_files/jcanvas.min.js.ダウンロード"></script>
+	
+	<script src="./岩崎学園スタログ_files/highcharts.js.ダウンロード"></script>
+	<script src="./岩崎学園スタログ_files/jquery.fullscreen.min.js.ダウンロード"></script>
+	
+			<script src="./岩崎学園スタログ_files/notify.js.ダウンロード"></script>
+		
+	<script src="./岩崎学園スタログ_files/jquery.fancybox.js.ダウンロード"></script>
+	<script src="./岩崎学園スタログ_files/Chart.min.js.ダウンロード"></script>
+	
+	<script>
+		dropzoneButtonMessage = 'ファイルアップロード';
+		dropzoneDragDropMessage = 'ここにファイルをドラッグするとアップロードされます';
+		dropzoneCancelUpload = 'キャンセル';
+		dropzoneCancelUploadConfirmation = "アップロードをキャンセルする場合はOKをクリックしてください。\nアップロードを続行する場合はキャンセルをクリックしてください。";
+		dropzoneRemoveButton = '<img src="/lms/common/images/icons/remove.png" alt="" class="icon" /> ';
+		dropzonetResponseError = 'サーバーは {{statusCode}} コードで応答しました。';
+		dropzoneMaxFilesExceeded = 'これ以上のファイルはアップロードできません。';
+		dropzoneFallbackMessage = 'お使いのブラウザはドラッグアンドドロップでのファイルアップロードをサポートしていません。';
+		dropzoneFileTooBig = 'ファイルが大きすぎます（{{filesize}} MiB）。最大ファイルサイズ：{{maxFilesize}} MiB。';
+		dropzoneInvalidFileType = 'このタイプのファイルはアップロードできません。';
+		dropzoneUploadableMaxsize = '1024';
+	</script>
+	<script src="./岩崎学園スタログ_files/dropzone.js.ダウンロード"></script>
+	<script src="./岩崎学園スタログ_files/uploader.js.ダウンロード"></script>
+			<script src="./岩崎学園スタログ_files/rubric.js.ダウンロード"></script>
+		<style>
+/**
+ *	Glexa Record voice  css
+ */
+
+/*==================================
+	Record voice
+==================================*/
+.record-voice {
+	height: 32px;
+}
+.record-voice .progress.progress-rec-vol,
+.record-voice .progress.progress-rec-vol-bar:before {
+	width: 400px;
+	height: 10px;
+}
+.record-voice .progress.progress-rec-vol {
+	border-radius: 0;
+	-webkit-box-shadow: none;
+	box-shadow: none;
+	background-color: #666;
+	display: inline-block;
+	vertical-align: middle;
+}
+.record-voice .progress.progress-rec-vol .progress-bar {
+	position: relative;
+	overflow: hidden;
+	background-color: transparent;
+}
+.record-voice .progress.progress-rec-vol .progress-bar:before {
+	content: '';
+	position: absolute;
+	z-index: 1;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: #00ff00;
+	background: -moz-linear-gradient(left, #00ff00 0%, #00ff00 59.999%, #ffff00 60%, #ffff00 89.999%, #ff0000 90%, #ff0000 100%);
+	background: -webkit-linear-gradient(left, #00ff00 0%, #00ff00 59.999%, #ffff00 60%, #ffff00 89.999%, #ff0000 90%, #ff0000 100%);
+	background: linear-gradient(to right, #00ff00 0%, #00ff00 59.999%, #ffff00 60%, #ffff00 89.999%, #ff0000 90%, #ff0000 100%);
+	filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#00ff00', endColorstr='#ff0000', GradientType=1);
+}
+@media (max-width: 767.98px) {
+	.record-voice .progress.progress-rec-vol,
+	.record-voice .progress.progress-rec-vol:before {
+		width: calc(100% - 105px) !important;
+		height: 10px;
+		max-width: 400px;
+	}
+}
+
+/*==================================
+	Record voice Buttons
+==================================*/
+.record-voice .btn-rec,
+.record-voice .btn-stop,
+.record-voice .btn-play,
+.record-voice .btn-upload {
+	cursor: pointer;
+	width: 32px;
+	height: 32px;
+	overflow: hidden;
+	display: inline-block;
+	vertical-align: middle;
+	border-radius: 32px;
+	margin-left: 2px;
+	padding: 0;
+	outline: none !important;
+	position: relative;
+}
+.record-voice .btn-rec,
+.record-voice .btn-stop,
+.record-voice .btn-play {
+	border: 1px solid #e6e6e6;
+}
+.record-voice .btn-upload {
+	border: 1px solid #92cc73;
+}
+.record-voice .btn-rec:active,
+.record-voice .btn-stop:active,
+.record-voice .btn-play:active,
+.record-voice .btn-upload:active {
+	top: 2px;
+	left: 2px;
+}
+.record-voice .btn-rec span,
+.record-voice .btn-stop span,
+.record-voice .btn-play span,
+.record-voice .btn-upload span {
+	width: 30px;
+	height: 30px;
+	line-height: 30px;
+	display: block;
+	border-radius: 32px;
+}
+.record-voice .btn-rec span,
+.record-voice .btn-stop span,
+.record-voice .btn-play span {
+	border: 1px solid #fff;
+	box-shadow: inset 0 2px 2px #7a8b95;
+	background: #b3bdc5;
+	background: -moz-linear-gradient(left, #b3bdc5 1%, #e0e7eb 29%, #d3d9de 100%);
+	background: -webkit-linear-gradient(left, #b3bdc5 1%, #e0e7eb 29%, #d3d9de 100%);
+	background: linear-gradient(to right, #b3bdc5 1%, #e0e7eb 29%, #d3d9de 100%);
+	filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#b3bdc5', endColorstr='#d3d9de', GradientType=1);
+}
+.record-voice .btn-rec span {
+	color: #d7221a;
+}
+.record-voice .btn-stop span,
+.record-voice .btn-play span {
+	color: 545 f65;
+}
+.record-voice .btn-upload span {
+	color: #fff;
+	position: relative;
+	box-shadow: inset -2px 0 2px #c2f3b9;
+	background: #51a82a;
+	background: -moz-linear-gradient(left, #51a82a 0%, #6bd14f 100%);
+	background: -webkit-linear-gradient(left, #51a82a 0%, #6bd14f 100%);
+	background: linear-gradient(to right, #51a82a 0%, #6bd14f 100%);
+	filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#51a82a', endColorstr='#6bd14f', GradientType=1);
+}
+.record-voice .btn-upload span:after {
+	content: '';
+	width: 14px;
+	height: 14px;
+	position: absolute;
+	right: 2px;
+	top: 50%;
+	margin-top: -7px;
+	background-color: #b4eaa3;
+	box-shadow: 1px -1px 9px #ffffff;
+	border-radius: 100px;
+	display: block;
+}
+.record-voice .btn-rec span i,
+.record-voice .btn-stop span i,
+.record-voice .btn-play span i,
+.record-voice .btn-upload span i {
+	line-height: 1;
+	position: relative;
+	z-index: 2;
+}
+.record-voice .btn-rec span i {
+	font-size: 13px;
+}
+.record-voice .btn-stop span i {
+	font-size: 11px;
+}
+.record-voice .btn-play span i {
+	font-size: 12px;
+}
+.record-voice .btn-upload span i {
+	font-size: 18px;
+	text-shadow: 0 0 2px #00000045;
+	position: relative;
+	left: -1px;
+}
+
+/*==================================
+	Record voice Uploading
+==================================*/
+.record-voice .progress.progress-uploading,
+.record-voice .progress.progress-uploading:before {
+	width: 400px;
+	height: 10px;
+}
+.record-voice .progress.progress-uploading {
+	border-radius: 0;
+	-webkit-box-shadow: none;
+	box-shadow: none;
+	background-color: #666;
+	display: inline-block;
+	vertical-align: middle;
+	position: relative;
+}
+.progress-carve {
+	position: absolute;
+	z-index: 2;
+	left: 0;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	height: 10px;
+	width: 100%;
+}
+.progress-carve span {
+	display: block;
+	float: left;
+	width: 5%;
+	height: 10px;
+	border-top: 1px solid #00002e;
+	border-left: 1px solid #00002e;
+	border-bottom: 1px solid #00002e;
+	background-color: #043045;
+}
+.progress-carve span:last-child {
+	border-right: 1px solid #00002e;
+}
+.record-voice .progress.progress-uploading .progress-bar {
+	background-color: #1a97d4;
+	position: relative;
+	z-index: 3;
+}
+@media (max-width: 767.98px) {
+	.record-voice .progress.progress-uploading,
+	.record-voice .progress.progress-uploading:before {
+		width: calc(100% - 100px) !important;
+		height: 10px;
+		max-width: 400px;
+	}
+}
+</style>
+<script src="./岩崎学園スタログ_files/v2audio.js.ダウンロード"></script>
+<script>
+	/**
+	 * Glexa recorder "Go2Voice"
+	 *
+	 * Copyright (C) 2016 VERSION Inc.
+	 */
+
+	glexa = glexa || {};
+	glexa.recorder = glexa.recorder || {};
+	glexa.recorder.currentPostfix = false;
+	glexa.recorder.options = {};
+	glexa.recorder.plugin = {};
+	glexa.recorder.params = {};
+
+	glexa.recorder.putRecorder = function(options, initCallback) {
+
+		var element = options.element || 'div-rec-plugin';
+
+		if (!v2audio.isRecordable()) {
+			$('#' + element).html('<span class="required">※お使いの環境では録音機能はご利用になれません。</span>');
+			return false;
+		}
+
+		var options = options || {};
+		var postfix = options.postfix || '';
+
+		glexa.recorder.options[postfix] = {
+			element: element,
+			width: options.width || 0,
+			height: options.height || 10,
+			onStartRec: options.onStartRec || false,
+			onStopRec: options.onStopRec || false,
+			onStartPlay: options.onStartPlay || false,
+			onStopPlay: options.onStopPlay || false,
+			beforePost: options.beforePost || false,
+			onError: options.onError || false,
+			onUploaded: options.onUploaded || false,
+			onProgress: options.onProgress || false,
+			onStopped: options.onStopped || false,
+			action: options.action || false,
+			params: options.params || false,
+		};
+
+		glexa.recorder.params[postfix] = params;
+
+		var element = '#' + glexa.recorder.options[postfix].element;
+		$(element).append('<div id="recorder' + postfix + '" class="record-voice"></div>');
+		$('#recorder' + postfix)
+			.append('<div class="progress progress-rec-vol"><div class="progress-bar" role="progressbar" aria-valuenow="" aria-valuemin="0" area-valuemax="100" style="width:0%;"></div></div>')
+			.append('<div class="progress progress-uploading" style="display:none;"><div class="progress-carve cf"></div><div class="progress-bar" role="progressbar" aria-valuenow="" aria-valuemin="0" aria-valuemax="100" style="width:0%;"></div></div>')
+			.append('<button id="x-recorder-rec' + postfix + '" class="btn-rec x-recorder-rec"><span><i class="fas fa-circle"></i></span></button>')
+			.append('<button id="x-recorder-play' + postfix + '" class="btn-play x-recorder-play"><span><i class="fas fa-play"></i></span></button>')
+			.append('<button id="x-recorder-stop' + postfix + '" class="btn-stop x-recorder-stop"><span><i class="fas fa-stop"></i></span></button>')
+			.append('<button id="x-recorder-post' + postfix + '" class="btn-upload x-recorder-post"><span><i class="glyphicon glyphicon-arrow-up"></i></span></button>')
+		;
+
+		var width = glexa.recorder.options[postfix].width;
+		if (width > 0) {
+			$('.progress-rec-vol').css('width', width + 'px');
+			$('.progress-uploading').css('width', width + 'px');
+		}
+
+		glexa.recorder.viewButtons(false, postfix);
+
+		$('#x-recorder-rec' + postfix).attr('postfix', postfix);
+		$('#x-recorder-stop' + postfix).attr('postfix', postfix);
+		$('#x-recorder-play' + postfix).attr('postfix', postfix);
+		$('#x-recorder-post' + postfix).attr('postfix', postfix);
+
+		$('#x-recorder-rec' + postfix).off().on('click', function(e) {
+			e.preventDefault();
+			glexa.recorder.rec($(this).attr('postfix'));
+		}).css('cursor', 'pointer');
+
+		$('#x-recorder-stop' + postfix).off().on('click', function(e) {
+			e.preventDefault();
+			glexa.recorder.stop($(this).attr('postfix'));
+		}).css('cursor', 'pointer');
+
+		$('#x-recorder-play' + postfix).off().on('click', function(e) {
+			e.preventDefault();
+			glexa.recorder.play($(this).attr('postfix'));
+		}).css('cursor', 'pointer');
+
+		$('#x-recorder-post' + postfix).off().on('click', function(e) {
+			e.preventDefault();
+			glexa.recorder.post($(this).attr('postfix'));
+		}).css('cursor', 'pointer');
+
+		glexa.recorder.plugin[postfix] = new v2audio.recorder({
+			onLevelProc: {method: glexa.recorder.onLevelProc, params: {postfix: postfix}},
+			onOverflowProc: {method: function(){
+				glexa.recorder.stop(postfix);
+			}, params: {}},
+		});
+
+//		var callback = function(result) {
+//
+//			if (!result) {
+//				delete glexa.recorder.plugin[postfix];
+//				glexa.recorder.plugin[postfix] = null;
+//				glexa.recorder.viewButtons('cantuse', postfix);
+//			}
+//
+//			if ($.isFunction(initCallback)) {
+//				initCallback(result);
+//			}
+//
+//		};
+
+		return glexa.recorder.plugin[postfix].init();
+	};
+
+	glexa.recorder.removeRecorder = function(postfix) {
+
+		if (!postfix) {
+			postfix = '';
+		}
+
+		if (glexa.recorder.options[postfix]) {
+			$('#' + glexa.recorder.options[postfix].element).children().remove();
+		}
+
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		glexa.recorder.plugin[postfix].destroy();
+
+		delete glexa.recorder.plugin[postfix];
+		delete glexa.recorder.params[postfix];
+
+	};
+
+	glexa.recorder.set = function(key, value, postfix) {
+		//console.log('recorder: set', postfix);
+		if (!postfix) {
+			postfix = '';
+		}
+
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		glexa.recorder.options[postfix].params[key] = value;
+	};
+
+	glexa.recorder.rec = function(postfix) {
+		//console.log('recorder: rec', postfix);
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		if ($.isFunction(glexa.recorder.options[postfix].onStartRec)) {
+			glexa.recorder.options[postfix].onStartRec();
+		}
+
+		glexa.recorder.plugin[postfix].startRecord();
+		glexa.recorder.viewButtons('rec', postfix);
+	};
+
+	glexa.recorder.play = function(postfix) {
+		//console.log('recorder: play', postfix);
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		if ($.isFunction(glexa.recorder.options[postfix].onStartPlay)) {
+			glexa.recorder.options[postfix].onStartPlay();
+		}
+
+		glexa.recorder.plugin[postfix].startPlay(1.0, function(){
+			glexa.recorder.stop(postfix);
+		});
+
+		glexa.recorder.viewButtons('play', postfix);
+	};
+
+	glexa.recorder.stop = function(postfix) {
+		//console.log('recorder: stop', postfix);
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		if (glexa.recorder.plugin[postfix].isRecording()) {
+			if ($.isFunction(glexa.recorder.options[postfix].onStopRec)) {
+				glexa.recorder.options[postfix].onStopRec();
+			}
+			glexa.recorder.plugin[postfix].stopRecord();
+		} else {
+			if ($.isFunction(glexa.recorder.options[postfix].onStopPlay)) {
+				glexa.recorder.options[postfix].onStopPlay();
+			}
+			glexa.recorder.plugin[postfix].stopPlay();
+		}
+
+		if ($.isFunction(glexa.recorder.options[postfix].onStopped)) {
+			glexa.recorder.options[postfix].onStopped();
+		}
+
+		glexa.recorder.viewButtons('stop', postfix);
+		glexa.recorder.viewBar('rec', 0, postfix);
+	};
+
+	glexa.recorder.clear = function(postfix) {
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		glexa.recorder.plugin[postfix].clear();
+	};
+
+	glexa.recorder.setTimeLimit = function(time, postfix) {
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		glexa.recorder.plugin[postfix].setMaxLength(time);
+	};
+
+	glexa.recorder.isSending = false;
+	glexa.recorder.post = function(postfix) {
+		//console.log('recorder: post', postfix);
+		if (!glexa.recorder.plugin[postfix]) {
+
+			if (glexa.recorder.options[postfix].onError) {
+				glexa.recorder.options[postfix].onError();
+			}
+			return;
+		}
+
+		glexa.recorder.currentPostfix = postfix;
+		if (glexa.recorder.isSending) {
+			return false;
+		}
+
+		if (glexa.recorder.options[postfix].beforePost) {
+			glexa.recorder.options[postfix].beforePost();
+		}
+
+		if (!glexa.recorder.plugin[postfix].isRecorded()) {
+			if (glexa.recorder.options[postfix].onError) {
+				glexa.recorder.options[postfix].onError();
+			} else {
+				glexa.alert('音声を録音してください');
+			}
+			return false;
+		}
+
+		if (glexa.recorder.plugin[postfix].isPlaying() || glexa.recorder.plugin[postfix].isRecording()) {
+			return false;
+		}
+
+		glexa.recorder.viewButtons('post', postfix);
+		glexa.recorder.isSending = true;
+
+		var fd = new FormData();
+
+		for (key in glexa.recorder.options[postfix].params) {
+			fd.append(key, glexa.recorder.options[postfix].params[key]);
+		}
+
+		fd.append('Filedata', glexa.recorder.plugin[postfix].exportBlob());
+		fd.append('action', glexa.recorder.options[postfix].action);
+
+		glexa.recorder.viewBar('post', 0, postfix);
+
+		$.ajax({
+			url: '/lms/',
+			method: 'POST',
+			data: fd,
+			contentType: false,
+			processData: false,
+			success: function(r) {
+				if (r == 'ng') {
+					completeSend(false);
+				} else {
+					completeSend(true);
+				}
+			},
+			error: function() {
+				completeSend(false);
+			},
+			complete: function() {
+				glexa.recorder.viewBar('rec', 0, postfix);
+			},
+			xhr: function() {
+				XHR = $.ajaxSettings.xhr();
+				if (XHR.upload) {
+					XHR.upload.addEventListener('progress', function(e) {
+						progress = parseInt(e.loaded / e.total * 10000) / 100;
+						//console.log(progress + "%");
+						glexa.recorder.viewBar('post', progress, postfix);
+					}, false);
+				}
+				return XHR;
+			}
+		});
+
+	};
+
+	glexa.recorder.viewButtons = function(mode, postfix) {
+		console.log('recorder: view buttons', mode, postfix);
+		if (mode == 'rec' || mode == 'play') {
+			$('#x-recorder-rec' + postfix).hide();
+			$('#x-recorder-play' + postfix).hide();
+			$('#x-recorder-stop' + postfix).show();
+			$('#x-recorder-post' + postfix).hide();
+		} else if (mode == 'stop') {
+			$('#x-recorder-rec' + postfix).show();
+			$('#x-recorder-stop' + postfix).hide();
+			if (glexa.recorder.plugin[postfix].isRecorded()) {
+				$('#x-recorder-play' + postfix).show();
+				$('#x-recorder-post' + postfix).show();
+			} else {
+				$('#x-recorder-play' + postfix).hide();
+				$('#x-recorder-post' + postfix).hide();
+			}
+		} else if (mode == 'post') {
+			$('#x-recorder-rec' + postfix).hide();
+			$('#x-recorder-play' + postfix).hide();
+			$('#x-recorder-stop' + postfix).hide();
+			$('#x-recorder-post' + postfix).hide();
+		} else if (mode == 'cantuse') {
+			$('#x-recorder-rec' + postfix).show();
+			$('#x-recorder-play' + postfix).hide();
+			$('#x-recorder-stop' + postfix).hide();
+			$('#x-recorder-post' + postfix).hide();
+			$('#x-recorder-rec' + postfix).attr('disabled', true);
+		} else {
+			$('#x-recorder-rec' + postfix).show();
+			$('#x-recorder-play' + postfix).hide();
+			$('#x-recorder-stop' + postfix).hide();
+			$('#x-recorder-post' + postfix).hide();
+		}
+	};
+
+	glexa.recorder.viewBar = function(mode, level, postfix) {
+
+		if (mode == 'rec') {
+			$('#recorder' + postfix + ' .progress-rec-vol').show();
+			$('#recorder' + postfix + ' .progress-rec-vol .progress-bar').css('width', level + '%');
+			$('#recorder' + postfix + ' .progress-uploading').hide();
+		} else if (mode == 'post') {
+			$('#recorder' + postfix + ' .progress-rec-vol').hide();
+			$('#recorder' + postfix + ' .progress-uploading').show();
+			$('#recorder' + postfix + ' .progress-uploading .progress-bar').css('width', level + '%');
+		} else {
+			console.warn(mode + ' is not defined');
+		}
+	};
+
+	glexa.recorder.checkRecorded = function(callback, postfix) {
+
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		//try {
+		if (glexa.recorder.plugin[postfix].isRecorded()) {
+			if (glexa.recorder.options[postfix].onStopped) {
+				glexa.recorder.options[postfix].onStopped();
+			}
+			callback();
+		} else {
+			if (!glexa.recorder.plugin[postfix].isRecording() && !glexa.recorder.plugin[postfix].isPlaying()) {
+				setTimeout(function() {
+					glexa.recorder.checkRecorded(callback, postfix);
+				}, 1000);
+			}
+		}
+		//} catch(e) {};
+	};
+
+	glexa.recorder.checkPlaying = function(postfix) {
+		//console.log('Cheking playing status');
+		if (!glexa.recorder.plugin[postfix]) {
+			return;
+		}
+
+		try {
+			if (glexa.recorder.plugin[postfix].isPlaying()) {
+				setTimeout(function() {
+					glexa.recorder.options[postfix].checkPlaying();
+				}, 500);
+			} else {
+				glexa.recorder.stop();
+			}
+		} catch(e) {};
+	};
+
+	glexa.recorder.onLevelProc = function(level, params) {
+		//console.log(level);
+		glexa.recorder.viewBar('rec', level, params.postfix);
+	};
+
+	// recorderInterfaces
+	function progressSend(value) {
+		if (glexa.recorder.options[glexa.recorder.currentPostfix].onProgress) {
+			glexa.recorder.options[glexa.recorder.currentPostfix].onProgress(value);
+		}
+	}
+
+	function completeSend(success) {
+		if (glexa.recorder.options[glexa.recorder.currentPostfix].onUploaded) {
+			glexa.recorder.options[glexa.recorder.currentPostfix].onUploaded(success);
+		} else {
+			if (!success) {
+				glexa.alert('Upload error');
+			}
+		}
+		glexa.recorder.isSending = false;
+		glexa.recorder.viewButtons(false, glexa.recorder.currentPostfix);
+		glexa.recorder.currentPostfix = false;
+	}
+
+	var openRecDialog = false;
+	function micNotAccess()
+	{
+		//openDialog = false;
+		if (!openRecDialog) {
+			//if (!$('#mic_not_access').get(0)) {
+			glexa.openRemoteModal({
+				action: 'glexa_modal_micnotaccess_view'
+			});
+			openRecDialog = true;
+		}
+	}
+
+	function doCloseDialog(){
+		glexa.closeRemoteModal();
+		$('.quiz_rec_button').show();
+	}
+</script>	<style>
+/**
+*    Glexa Play sound css
+*/
+
+/*==================================
+Sound player
+==================================*/
+.sound-player {
+	width: 555px;
+}
+.sound-player .sound-cue,
+.sound-player .progress {
+	width: 450px;
+}
+.sound-player .sound-cue {
+	height: 10px;
+	position: relative;
+}
+.sound-player .sound-cue .div-cue {
+	position: absolute;
+	z-index: 1;
+	height: 10px;
+	border: 4.5px solid transparent;
+	border-top: 9px solid #0000cc;
+}
+.sound-player .progress {
+	height: 25px;
+	border: 2px solid #404040;
+	border-radius: 0;
+	background-color: #ccc;
+	box-shadow: none;
+}
+.sound-player .progress .progress-bar {
+	background-color: #ff9900;
+	-webkit-transition: unset;
+	-o-transition: unset;
+	transition: unset;
+}
+.sound-player .progress,
+.sound-player .sound-player-btns {
+	float: left;
+}
+.sound-player .sound-player-btns {
+	margin-left: 2px;
+	background-color: #0c0c0c;
+}
+.sound-player .sound-player-btns .sound-player-btn {
+	float: left;
+	outline: none !important;
+	position: relative;
+	background-color: #333;
+	color: #fff;
+	width: 25px;
+	height: 25px;
+	border: 2px solid transparent;
+	border-right-width: 1px;
+	border-left-width: 1px;
+	border-color: #0c0c0c;
+	font-size: 10px;
+	text-align: center;
+}
+.sound-player .sound-player-btns .sound-player-btn:first-child {
+	border-left-width: 2px;
+}
+.sound-player .sound-player-btns .sound-player-btn:last-child {
+	border-right-width: 2px;
+}
+.sound-player .sound-player-btns .sound-player-btn:active {
+	top: 1px;
+	left: 1px;
+}
+
+@media screen and (max-width: 767px) {
+	.sound-player {
+		width:100%;
+	}
+	.sound-player .sound-cue,
+	.sound-player .progress {
+		width: calc(100% - 104px);
+	}
+}
+</style>
+<script>
+	glexa = glexa || {};
+	glexa.player = glexa.player || {
+		audio : function(options) {
+			this.options = options;
+			this.audio = null;
+			this.intervalId = null;
+			this.setup(options);
+		}
+	};
+
+	/*
+		[options]
+		(必須)
+		element : Playerを設置するエレメント
+		src     : Audioソース
+
+		(任意)
+		autoplay : 自動再生フラグ
+		cues     : cue位置(sec)
+		align    : Align指定(center)
+	 */
+	glexa.player.putPlayer = function(options) {
+
+		return new glexa.player.audio(options);
+
+	};
+
+	glexa.player.audio.prototype = {
+
+		setup : function(options) {
+
+			var base = this;
+			var hash = glexa.makeHash();
+
+			if (options.cues) {
+				if (typeof options.cues === 'number') {
+					options.cues = [options.cues];
+				}
+			} else {
+				options.cues = [];
+			}
+
+			$(options.element).append('<div class="sound-player" id="player_' + hash + '"></div>');
+			var element = '#player_' + hash;
+
+			if (options.align == 'center') {
+				$(element)
+					.addClass('margin-left-auto margin-right-auto');
+			}
+			$(element)
+				.append('<div class="sound-cue"></div>')
+				.append('<div class="sound-player-main cf"></div>')
+				.append('<audio src="' + options.src + '"></audio>')
+			;
+
+			$(element + ' .sound-player-main')
+				.append('<div class="progress"></div>')
+				.append('<div class="sound-player-btns cf"></div>')
+			;
+
+			$(element + ' .progress')
+				.append('<div class="progress-bar" role="progressbar" aria-valuenow="10" aria-valuemin="0" aria-valuemax="100" style="width:0%;"></div>');
+
+			$(element + ' .sound-player-btns')
+				.append('<button type="button" class="sound-player-btn sound-player-btn-play"><i class="fas fa-play"></i></button>')
+				.append('<button type="button" class="sound-player-btn sound-player-btn-pause" style="display: none;"><i class="fas fa-pause"></i></button>')
+				.append('<button type="button" class="sound-player-btn sound-player-btn-stop"><i class="fas fa-stop"></i></button>')
+				.append('<button type="button" class="sound-player-btn sound-player-btn-backward"><i class="fas fa-backward"></i></button>')
+				.append('<button type="button" class="sound-player-btn sound-player-btn-forward"><i class="fas fa-forward"></i></button>');
+
+			$(element + ' .sound-player-btn-play').off().on('click', function(){
+				base.play();
+			});
+			$(element + ' .sound-player-btn-pause').off().on('click', function(){
+				base.pause();
+			});
+			$(element + ' .sound-player-btn-stop').off().on('click', function(){
+				base.pause();
+				base.seek(0);
+			});
+			$(element + ' .sound-player-btn-backward').off().on('click', function(){
+				console.log('prev');
+				var pos = 0;
+				var now = base.audio.currentTime - 1;
+				for (var i = base.options.cues.length-1; i >= 0; i--) {
+					var cue = base.options.cues[i];
+					if (cue < now) {
+						pos = cue;
+						break;
+					}
+				}
+				base.seek(pos);
+			});
+			$(element + ' .sound-player-btn-forward').off().on('click', function(){
+				console.log('next');
+				var pos = -1;
+				var now = base.audio.currentTime;
+				for (var i = 0; i < base.options.cues.length; i++) {
+					var cue = base.options.cues[i];
+					if (now < cue) {
+						pos = cue;
+						break;
+					}
+				}
+				base.seek(pos);
+			});
+
+			$(element + ' audio').off()
+				.on('loadeddata', function(){
+					if (base.options.cues.length > 0) {
+						if (base.options.cues[base.options.cues.length-1] > base.audio.duration) {
+							for (var i = 0; i < base.options.cues.length; i++) {
+								base.options.cues[i] /= 1000;
+							}
+						}
+					}
+					for (var i = 0; i < base.options.cues.length; i++) {
+						var cue = base.options.cues[i];
+						var pos = 100 * cue / base.audio.duration;
+						$(element + ' .sound-cue').append('<div class="div-cue" style="left:' + pos + '%;"></div>');
+					}
+					if (base.options.autoplay) {
+						base.play();
+					}
+				})
+				.on('timeupdate', function(){
+					base.update();
+				});
+
+			this.element = element;
+			this.audio = $(element + ' audio').get(0);
+
+		},
+
+		remove : function(){
+			$(this.element).remove();
+		},
+
+		update : function() {
+			var audio = this.audio;
+			var position = parseInt(100 * audio.currentTime / audio.duration);
+
+			if (audio.currentTime >= audio.duration) {
+				position = 100;
+				this.pause();
+			}
+
+			$(this.element).find('.progress-bar').css('width', position.toString() + '%');
+		},
+
+		play : function() {
+			this.audio.play();
+			$(this.element).find('.sound-player-btn-play').hide();
+			$(this.element).find('.sound-player-btn-pause').show();
+		},
+
+		stop : function() {
+			this.audio.pause();
+			this.seek(0);
+		},
+
+		pause : function() {
+			this.audio.pause();
+			$(this.element).find('.sound-player-btn-play').show();
+			$(this.element).find('.sound-player-btn-pause').hide();
+		},
+
+		seek : function(time) {
+			if (time < 0) {
+				time = this.audio.duration;
+			}
+			this.audio.currentTime = time;
+		}
+	};
+</script>	<script>
+		function sendAccess() {
+			params = {
+				class_id: 0,
+				content_id: 0,
+			};
+					    glexa.ajax({
+		        action : 'glexa_ajax_access_accept',
+		        withoutLoading: true,
+		        params : params,
+				onSuccess: function(res){
+		        	if (parseInt(res.data) === 0) {
+				        setTimeout(function() {
+					        sendAccess()
+				        }, parseInt(60) * 1000);
+					} else {
+		        		glexa.catchSessionInvalid(res.data);
+					}
+				},
+		    });
+		}
+		$(function() {
+			sendAccess();
+		});
+	</script>
+
+<script>
+	glexa.resizeSPCell = function(){};
+
+
+	glexa.isApp = function() {
+		if (parseInt('0')) {
+			return true;
+		}
+
+		let ua = window.navigator.userAgent.toLowerCase();
+		if (/*ua.indexOf('ipad') > -1 || ua.indexOf('macintosh') > -1 &&*/ 'ontouchend' in document) {
+			return true;
+		}
+
+		return false;
+	};
+
+</script>
+
+<script>
+	$(function(){
+		
+		
+	});
+</script>
+	<!-- Licences -->
+	<!-- http://ver2.jp/ -->
+	<!-- http://ethna.jp/ -->
+<script src="./岩崎学園スタログ_files/rewritejs.php"></script><link rel="manifest" href="https://portal.iwasaki.ac.jp/portal/manifest.json"><script src="./岩崎学園スタログ_files/tingle.min.js.ダウンロード"></script><link rel="stylesheet" href="./岩崎学園スタログ_files/tingle.min.css"><link rel="stylesheet" href="./岩崎学園スタログ_files/style.css"><script src="./岩崎学園スタログ_files/jquery.cookie.min.js.ダウンロード"></script><script src="./岩崎学園スタログ_files/reconnecting-websocket.min.js.ダウンロード"></script><script src="./岩崎学園スタログ_files/websocketJS.php"></script><script>
+	$(function() {
+		// event setup
+		$('.close, .btn-back-help').on('click',function(){
+			$('#manual').hide();
+		});
+
+		$('#button-logout').on('click', function(e) {
+			e.preventDefault();
+			glexa.confirm('ログアウトしてもよろしいですか？', function(e) {
+				location.href = $('#button-logout').attr('href');
+			});
+		});
+
+		$('.a-login-student').on('click', function(e) {
+			e.preventDefault();
+			glexa.confirm('学生モード(学生と同じ権限でログイン)に移行します。<br>このクラスに学生として参加しますがよろしいですか？', function(e) {
+				location.href = $('.a-login-student').attr('href');
+			});
+		});
+
+		// first load
+		
+					loadManual();
+		
+	});
+
+	function loadManual() {
+		glexa.ajax({
+			action: 'glexa_help',
+			element: '#div-manual'
+		});
+	}
+
+	var isClassEntryOpened = false;
+	function openModalClassEntry() {
+		if (!isClassEntryOpened) {
+			glexa.ajax({
+				action: 'glexa_modal_entry_form',
+				params: {
+					class_id: 0,
+					is_ajax: 1
+				},
+				withoutLoading: true,
+				onSuccess: function(result) {
+					if (result.data.is_accepted != '1') {
+						glexa.openRemoteModal({
+							action: 'glexa_modal_entry_form',
+							params: {
+								class_id: 0
+							}
+						});
+						isClassEntryOpened = true;
+					}
+				}
+			})
+		}
+	}
+	function closeModalClassEntry() {
+		if (isClassEntryOpened) {
+			glexa.closeRemoteModal();
+			isClassEntryOpened = false;
+		}
+	}
+
+	var isClickerOpened = false;
+	function openModalClicker() {
+		if (!isClickerOpened) {
+			glexa.ajax({
+				action: 'glexa_modal_clicker_form',
+				params: {
+					class_id: 0,
+					is_ajax: 1
+				},
+				withoutLoading: true,
+				onSuccess: function(result) {
+					if (result.data.is_starting == '1') {
+						glexa.openRemoteModal({
+							action: 'glexa_modal_clicker_form',
+							params: {
+								class_id: 0
+							}
+						});
+						isClickerOpened = true;
+					}
+				}
+			})
+		}
+	}
+	function closeModalClicker() {
+		if (isClickerOpened) {
+			glexa.closeRemoteModal();
+			isClickerOpened = false;
+		}
+	}
+</script><style type="text/css">.fancybox-margin{margin-right:0px;}</style><!--network hook. injected by TreeIvy extension--><script src="chrome-extension://jhbpgojndpkiejfbknoidmgcgbliodng/overrider/external/network_hook.js"></script><style id="lms-memo-style">
+      .lms-icon {
+        vertical-align: -3px;
+        flex: 0 0 auto;
+      }
+
+      .lms-memo-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        width: 100%;
+        margin-top: 5px;
+        padding: 3px 5px;
+        font-size: 11px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        text-align: center;
+      }
+
+      .lms-memo-btn:hover {
+        background-color: #45a049;
+      }
+
+      .lms-memo-has-text {
+        background-color: #2196F3 !important;
+      }
+
+      .lms-memo-popup {
+        position: fixed;
+        top: 90px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(400px, 92vw);
+        max-height: min(70vh, 560px);
+        background: white;
+        border: 1px solid #ddd;
+        padding: 16px;
+        z-index: 10000;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      .lms-memo-popup h3 {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: 15px;
+        color: #333;
+      }
+
+      .lms-task-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
+        flex: 1;
+      }
+
+      .lms-task-list {
+        flex: 1;
+        overflow: auto;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border-top: 1px solid #eee;
+      }
+
+      .lms-task-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 6px 2px;
+        border-bottom: 1px solid #eee;
+      }
+
+      .lms-task-item input[type="checkbox"] {
+        margin-top: 3px;
+        flex: 0 0 auto;
+      }
+
+      .lms-task-text {
+        flex: 1;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .lms-task-item.done .lms-task-text {
+        text-decoration: line-through;
+        color: #999;
+      }
+
+      .lms-task-actions {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 2px;
+      }
+
+      .lms-task-actions button {
+        display: inline-flex;
+        align-items: center;
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 3px;
+        border-radius: 4px;
+        color: #666;
+      }
+
+      .lms-task-actions button:hover {
+        background: #f0f0f0;
+        color: #333;
+      }
+
+      .lms-task-empty {
+        color: #999;
+        font-size: 12px;
+        padding: 8px 2px;
+      }
+
+      .lms-task-form textarea {
+        width: 100%;
+        min-height: 60px;
+        box-sizing: border-box;
+        padding: 5px;
+        font-size: 12px;
+        resize: vertical;
+      }
+
+      .lms-task-form-buttons {
+        margin-top: 6px;
+        text-align: right;
+      }
+
+      .lms-task-form-buttons button {
+        margin-left: 5px;
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+
+      .lms-memo-popup-buttons {
+        margin-top: 0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 5px;
+        flex: 0 0 auto;
+      }
+
+      .lms-memo-popup-buttons button {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        cursor: pointer;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        background: white;
+      }
+
+      .lms-memo-save-btn {
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+      }
+
+      .lms-task-add-btn {
+        background: #2196F3 !important;
+        color: white !important;
+        border: none !important;
+      }
+
+      .lms-task-add-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      #lms-task-embed-panel .lms-task-list {
+        max-height: 320px;
+        border-top: none;
+      }
+
+      #lms-task-embed-panel .lms-memo-popup-buttons {
+        justify-content: flex-start;
+      }
+
+      .lms-memo-toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #323232;
+        color: white;
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-size: 13px;
+        z-index: 10002;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+
+      .lms-memo-toast.show {
+        opacity: 1;
+      }
+
+      .lms-memo-preview-popup {
+        position: fixed;
+        max-width: 260px;
+        max-height: 200px;
+        overflow: auto;
+        background: #fffde7;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-size: 12px;
+        color: #333;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        z-index: 10001;
+        pointer-events: none;
+      }
+
+      .lms-preview-task-list {
+        margin: 0;
+        padding-left: 16px;
+      }
+
+      .lms-preview-task-list li {
+        margin-bottom: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+    </style></head>
+
+<body class=" ">
+	
+								
+	
+
+	<div class="v2-container">
+		<div class="v2-screen">
+							<header>
+					<nav class="navbar navbar-default nav1" role="navigation">
+						<div class="container-fluid">
+							<div class="navbar-header">
+								<button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#header-menu">
+									<span class="sr-only">Toggle navigation</span>
+									<span class="icon-bar"></span>
+									<span class="icon-bar"></span>
+									<span class="icon-bar"></span>
+								</button>
+								<a href="https://portal.iwasaki.ac.jp/lms/" class="navbar-brand">
+									
+				
+						<img src="./岩崎学園スタログ_files/logo02.png" alt="岩崎学園スタログ">
+								</a>
+                                							<div style="display:inline-block; padding-top:0.3em" id="iLiSLogoArea" waitkey=""><a href="https://portal.iwasaki.ac.jp/lms/" onclick="openILiS(); return false;"><img src="./岩崎学園スタログ_files/iLiS.png" height="38"></a></div><div style="display:none; padding-top:0.3em; margin-left:0.3em;" id="iLiSSharedScreenThumbArea"><a href="https://portal.iwasaki.ac.jp/lms/" onclick="openILiSSharedScreen(); return false;"><img style="height:3em"></a><small style="vertical-align:middle">&nbsp;画面共有中</small></div></div>
+							<div class="collapse navbar-collapse" id="header-menu">
+								<ul class="nav navbar-nav navbar-right">
+																			<li style="margin-right:3px"><a href="https://portal.iwasaki.ac.jp/portal/index.php" class="btn btn-black btn-sm logout" style="background-color:green" id="toportal">iポータルへ<span class="badge badge-danger" style="background-color:red; display: inline-block;">14</span></a></li><li>
+											
+												<a href="https://portal.iwasaki.ac.jp/lms/logout/" id="button-logout" class="btn btn-black btn-sm logout">
+													ログアウト
+												</a>
+
+																					</li>
+																	</ul>
+								<ul class="nav navbar-nav navbar-right gnav cf">
+																														<li>
+												<a href="https://portal.iwasaki.ac.jp/lms/">トップ</a>
+											</li>
+										
+																					<li>
+												<a href="https://portal.iwasaki.ac.jp/portal/lmsinc/sMyPage.php">マイページ</a>
+											</li>
+																																																																							<li>
+												<a href="https://portal.iwasaki.ac.jp/lms/mails/">
+													メール
+													<span class="badge badge-danger span-mail-count" style="">43</span>
+												</a>
+											</li>
+																															<li>
+												<a href="https://portal.iwasaki.ac.jp/lms/profile/">設定</a>
+											</li>
+																																								
+																																															<li id="ivy-settings-item"><a href="chrome-extension://jhbpgojndpkiejfbknoidmgcgbliodng/settings/settings.html" target="_blank" class="ivy-settings-link">Tree Ivy 設定</a></li><li id="lms-task-settings-item"><a href="chrome-extension://pcjeocjjlggpfijlglmlgdiiaimooikd/settings.html" target="_blank">タスク設定</a></li></ul>
+							</div><!-- /.navbar-collapse -->
+						</div><!-- /.container-fluid -->
+					</nav>
+
+					<nav class="navbar navbar-inverse nav2" role="navigation">
+						<div class="container-fluid">
+							<div class="navbar-collapse">
+								<ul class="nav navbar-nav">
+									<li class="user-icon">20241240283&nbsp;赤池 璃月&nbsp;さん</li>
+																																															<li class="mode active">
+											<a href="https://portal.iwasaki.ac.jp/lms/#">
+												<i class="glyphicon glyphicon-triangle-bottom"></i>&nbsp;学生
+											</a>
+										</li>
+																		
+									
+																	</ul>
+																	<div id="div-class-menu"></div>
+															</div><!-- /.navbar-collapse -->
+						</div><!-- /.container-fluid -->
+					</nav>
+				</header>
+								<!-- Modal -->
+				<div class="modal" id="manual" tabindex="-1" role="dialog" aria-labelledby="使い方" aria-hidden="true">
+					<div class="modal-dialog">
+						<div class="modal-content">
+							<div class="modal-header">
+								<button type="button" class="close" data-dismiss="modal"><span aria-hidden="true" class="glyphicon glyphicon-remove"></span><span class="sr-only">Close</span></button>
+								<i class="mark"></i>使い方
+							</div>
+							<div class="modal-body" id="div-manual">	<h5><b>学生用</b></h5>
+	<table class="table">
+		<tbody><tr>
+			<td>
+									<a href="https://manual.glexa.net/a231210/student/" target="_blank" rel="noopener"><i class="glyphicon glyphicon-triangle-right text-success"></i> 学生用ガイド</a>
+							</td>
+		</tr>
+	</tbody></table>
+			<h5><b>アドオン</b></h5>
+		<table class="table">
+							
+				<tbody><tr><td><a href="https://manual.glexa.net/a231210/portfolio-student/" target="_blank" rel="noopener"><i class="glyphicon glyphicon-triangle-right text-success"></i> Portfolio使い方ガイド</a></td></tr>
+			            		</tbody></table>
+	</div>
+						</div>
+					</div>
+				</div><!--modal-->
+											<div class="main sp-margin-bottom-md">
+					<div class="container">
+																		
+<script>
+	$(function () {
+		var day = new Date();
+		var dateNum = day.getTime();
+		// event setup
+		$('#ui-tab > ul').tabs();
+
+		// first load
+		glexa.loadNews();
+				loadTimetable();
+        glexa.loadCourseUsages();
+        glexa.loadGlexaAccess();
+		glexa.loadTopTimetable($('.a-load-timetable-select').val());
+		initClander(dateNum);
+		$('.before-seven-day-btn').click(function(){
+			var dayNum = dateNum - (7*1000*60*60*24);
+			dateNum = dayNum;
+			initClander(dayNum);
+		});
+		$('.before-one-day-btn').click(function(){
+			var dayNum = dateNum - (1*1000*60*60*24);
+			dateNum = dayNum;
+			initClander(dayNum);
+		});
+		$('.today-btn').click(function(){
+			dayNum = new Date().getTime();
+			dateNum = dayNum;
+			initClander(dayNum);
+		});
+		$('.after-one-day-btn').click(function(){
+			var dayNum = dateNum + (1*1000*60*60*24);
+			dateNum = dayNum;
+			initClander(dayNum);
+		});
+		$('.after-seven-day-btn').click(function(){
+			var dayNum = dateNum + (7*1000*60*60*24);
+			dateNum = dayNum;
+			initClander(dayNum);
+		});
+		$('.a-load-timetable-select').on('change', function(e) {
+			e.preventDefault();
+			loadTimetable($(this).val(), $(this).attr('mode'));
+		});
+
+	});
+	function initClander(dateNum){
+		$('.week-data ,.week-data-content').empty();
+		$('.week-data').removeClass('week-data-sun');
+		$('.week-data').removeClass('week-data-sat');
+		$('.week-data').each(function(index,ele){
+			var day = new Date(dateNum);
+			var Num = day.getTime() + (index*1000*60*60*24);
+		    day = new Date(Num);
+		    if(day.getDay() == 0){
+		    	$(this).addClass('week-data-sun');
+		    }
+		    if(day.getDay() == 6){
+		    	$(this).addClass('week-data-sat');
+		    }
+			$(this).append(formatDate(day)+'<a href="/lms/schedule/form/0/'+day.format('yyyy-MM-dd')+'"><i class="fas fa-edit"></i></a>');
+		});
+		$('.week-data-content').each(function(index,ele){
+			var day = new Date(dateNum);
+			var Num = day.getTime() + (index*1000*60*60*24);
+		    day = new Date(Num);
+			$(this).attr('date',day.format('yyyy-MM-dd'));
+		});
+		var thisWeekFirstDay  = $('.first-day').attr('date');
+		var thisWeekLastDay  = $('.last-day').attr('date');
+		glexa.ajax({
+			action:'glexa_ajax_schedule_view',
+			params:{
+				startdate:thisWeekFirstDay,
+				enddate:thisWeekLastDay
+			},
+			onSuccess:function(res){
+				for(var i = 0;i<res.data.length;i++){
+					for(var j = 0;j<$('.week-data-content').length;j++){
+						var contentDateStr = $($('.week-data-content')[j]).attr('date');
+						var DateStr = '';
+						if(!res.data[i].endday){
+							DateStr = res.data[i].start_datetime.substring(11,16)+' ~ ';
+						} else if(res.data[i].startday != res.data[i].endday){
+							if(res.data[i].endday == contentDateStr){
+								var startDateTime = new Date(Date.parse(res.data[i].start_datetime.replace(/-/g,"/")));
+								DateStr = formatDate(startDateTime)+' ~ '+res.data[i].end_datetime.substring(11,16);
+							}else if(res.data[i].startday == contentDateStr){
+								var endDateTime = new Date(Date.parse(res.data[i].end_datetime.replace(/-/g,"/")));
+								DateStr = res.data[i].start_datetime.substring(11,16) +' ~ '+formatDate(endDateTime);
+							}else if((new Date(res.data[i].startday.replace(/-/g,"\/"))) < (new Date(contentDateStr.replace(/-/g,"\/"))) < (new Date(res.data[i].end_datetime.replace(/-/g,"\/")))){
+								var startDateTime = new Date(Date.parse(res.data[i].start_datetime.replace(/-/g,"/")));
+								var endDateTime = new Date(Date.parse(res.data[i].end_datetime.replace(/-/g,"/")));
+								DateStr = formatDate(startDateTime)+' ~ '+formatDate(endDateTime);
+							}
+						}else{
+							DateStr = res.data[i].start_datetime.substring(11,16)+' ~ '+res.data[i].end_datetime.substring(11,16);
+						}
+
+						var unPublicBtn = '';
+						if (res.data[i].is_public == 0) unPublicBtn = '<i class="fas fa-eye-slash"></i>';
+						if (!res.data[i].endday) {
+							if (res.data[i].startday == $($('.week-data-content')[j]).attr('date')) {
+								$($('.week-data-content')[j]).append('<div><span>'+DateStr+'</span><br/>'+unPublicBtn+'<span class="green top-schedule-title"><a href="/lms/schedule/view/'+res.data[i].schedule_id+'">'+res.data[i].title+'</a></span></div><br/>');
+							}
+						} else if(res.data[i].startday == res.data[i].endday && res.data[i].startday == $($('.week-data-content')[j]).attr('date')){
+							$($('.week-data-content')[j]).append('<div><span>'+DateStr+'</span><br/>'+unPublicBtn+'<span class="green top-schedule-title"><a href="/lms/schedule/view/'+res.data[i].schedule_id+'">'+res.data[i].title+'</a></span></div><br/>');
+						}else if(res.data[i].startday == $($('.week-data-content')[j]).attr('date') && res.data[i].startday != res.data[i].endday){
+							$($('.week-data-content')[j]).append('<div><span>'+DateStr+'</span><br/>'+unPublicBtn+'<span class="green top-schedule-title"><a href="/lms/schedule/view/'+res.data[i].schedule_id+'">'+res.data[i].title+'</a></span></div><br/>');
+						}else if(res.data[i].endday == $($('.week-data-content')[j]).attr('date') && res.data[i].startday != res.data[i].endday){
+							$($('.week-data-content')[j]).append('<div><span>'+DateStr+'</span><br/>'+unPublicBtn+'<span class="green top-schedule-title"><a href="/lms/schedule/view/'+res.data[i].schedule_id+'">'+res.data[i].title+'</a></span></div><br/>');
+						}else if((new Date(res.data[i].startday.replace(/-/g,"\/"))) < (new Date(contentDateStr.replace(/-/g,"\/"))) && (new Date(contentDateStr.replace(/-/g,"\/"))) < (new Date(res.data[i].end_datetime.replace(/-/g,"\/")))){
+							$($('.week-data-content')[j]).append('<div><span>'+DateStr+'</span><br/>'+unPublicBtn+'<span class="green top-schedule-title"><a href="/lms/schedule/view/'+res.data[i].schedule_id+'">'+res.data[i].title+'</a></span></div><br/>');
+						}
+					}
+				}
+			}
+		});
+		glexa.loadTopTimetable($('.a-load-timetable-select').val(),thisWeekFirstDay);
+	}
+	 function formatDate(date){
+	  if(date){
+	      var month = (date.getMonth()+1)+'/';
+	      var day = date.getDate();
+	      var week = '（'+['日','月','火','水','木','金','土'][date.getDay()]+'）';
+		  return month+day+''+week;
+	  }else{
+		  return '0/0';
+	  }
+	}
+     Date.prototype.format = function (fmt) {
+         var o = {
+             "M+": this.getMonth() + 1,
+             "d+": this.getDate(),
+             "h+": this.getHours(),
+             "m+": this.getMinutes(),
+             "s+": this.getSeconds(),
+             "q+": Math.floor((this.getMonth() + 3) / 3),
+             "S": this.getMilliseconds()
+         };
+         if (/(y+)/.test(fmt)) fmt = fmt.replace(RegExp.$1, (this.getFullYear() + "").substr(4 - RegExp.$1.length));
+         for (var k in o)
+             if (new RegExp("(" + k + ")").test(fmt)) fmt = fmt.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
+         return fmt;
+     }
+
+	function loadTimetable(classArchiveId, mode, order) {
+		mode = glexa.sessionStorage.getItem('timetable_mode');
+				glexa.loadTimetable(classArchiveId, mode, order);
+		glexa.loadTopTimetable(classArchiveId);
+		if (mode != 'list') {
+			if (classArchiveId === undefined) {
+				if ($('.a-load-timetable-select').length) {
+					classArchiveId = $('.a-load-timetable-select').val();
+				}
+			}
+			glexa.loadJoinedClasses(false, classArchiveId);
+		}
+		changeTopView(mode);
+	}
+
+	function changeTopView(mode) {
+		$('#div-top-left').removeClass('col-sm-3');
+		$('#div-top-right').removeClass('col-sm-9');
+		if (mode == 'list') {
+			$('#div-top-left').hide();
+			$('#div-top-right').addClass('col-sm-12');
+		} else {
+			$('#div-top-left').show();
+			$('#div-top-left').addClass('col-sm-3');
+			$('#div-top-right').addClass('col-sm-9');
+		}
+	}
+</script>
+
+	
+	<div class="panel panel-default sp-margin-bottom-none sp-border-bottom-none sp-border-top-none">
+		<div class="panel-heading">スケジュール</div>
+		<div class="table-responsive sp-margin-bottom-none sp-padding-sm">
+			<div class="table-no-border padding-md">
+			 <div class="margin-bottom">
+ 			 	<button class="btn btn-default before-seven-day-btn"><i class="fas fa-angle-double-left"></i></button>
+			 	<button class="btn btn-default before-one-day-btn"><i class="fas fa-angle-left"></i></button>
+			 	<button class="btn btn-default today-btn">今日</button>
+			 	<button class="btn btn-default after-one-day-btn"><i class="fas fa-angle-right"></i></button>
+			 	<button class="btn btn-default after-seven-day-btn"><i class="fas fa-angle-double-right"></i></button>
+			 	<a href="https://portal.iwasaki.ac.jp/lms/schedule/list/" class="btn-info btn btn-default">月表示</a>
+	 			<div class="float-right">
+		 			<span>カテゴリ</span>
+		 			<select class="form-control select-class-archive a-load-timetable-select">
+		 					 			<option value="9">2026年度</option>
+		 					 			<option value="8">2025年度</option>
+		 					 			<option value="7">2024年度</option>
+		 					 			<option value="6">2023年度</option>
+		 					 			<option value="5">2022年度</option>
+		 					 			<option value="3">2021年度</option>
+		 					 			<option value="2">2020年度</option>
+		 					 			</select>
+	 			</div>
+			 </div>
+			 <div class="table-responsive other-class other-class-student-view">
+				 <table class="table table-bordered top-timetable-table">
+					<tbody><tr>
+						<td class="week-data" width="14%" date="">7/16（木）<a href="https://portal.iwasaki.ac.jp/lms/schedule/form/0/2026-07-16"><i class="fas fa-edit"></i></a></td>
+						<td class="week-data" width="14%" date="">7/17（金）<a href="https://portal.iwasaki.ac.jp/lms/schedule/form/0/2026-07-17"><i class="fas fa-edit"></i></a></td>
+						<td class="week-data week-data-sat" width="14%" date="">7/18（土）<a href="https://portal.iwasaki.ac.jp/lms/schedule/form/0/2026-07-18"><i class="fas fa-edit"></i></a></td>
+						<td class="week-data week-data-sun" width="14%" date="">7/19（日）<a href="https://portal.iwasaki.ac.jp/lms/schedule/form/0/2026-07-19"><i class="fas fa-edit"></i></a><div style="display: inline-block; float: right; clear: both; width: 0px;" title="時間割を日曜日始まりで固定する"><img class="ttmodeanchor" src="./岩崎学園スタログ_files/clip.png" style="position: relative; left: -15px; cursor:pointer; opacity: 0.3;" onclick="ttshowset(this, &#39;0&#39;);"></div></td>
+						<td class="week-data" width="14%" date="">7/20（月）<a href="https://portal.iwasaki.ac.jp/lms/schedule/form/0/2026-07-20"><i class="fas fa-edit"></i></a><div style="display: inline-block; float: right; clear: both; width: 0px;" title="時間割を月曜日始まりで固定する"><img class="ttmodeanchor" src="./岩崎学園スタログ_files/clip.png" style="position: relative; left: -15px; cursor:pointer; opacity: 0.3;" onclick="ttshowset(this, &#39;1&#39;);"></div></td>
+						<td class="week-data" width="14%" date="">7/21（火）<a href="https://portal.iwasaki.ac.jp/lms/schedule/form/0/2026-07-21"><i class="fas fa-edit"></i></a></td>
+						<td class="week-data" width="14%" date="">7/22（水）<a href="https://portal.iwasaki.ac.jp/lms/schedule/form/0/2026-07-22"><i class="fas fa-edit"></i></a></td>
+					</tr>
+				</tbody></table>
+				<div id="div-top-timetable" style="display: none;"></div><div id="div-top-timetable2"><table class="table table-bordered margin-bottom-none top-timetable-table" id="overrided-schedule">
+<tbody><style>
+    .top-timetable-table-td {
+        height: 35px;
+    }
+    </style><tr>
+<td width="14%" class="top-timetable-table-td" style="background-color: rgba(255, 204, 204, 0.3);">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">1</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10044/154866/" style="background-color: transparent; max-height: 1.2em;"><b>モバイル概論</b></a><br><div class="text-right"><small>杉本先生</small></div><div class="text-right"><small>教室 :</small> 503</div><div class="text-left" style="font-size:9pt; font-weight:bold"><span style="background-color:#fcc" class="attendance-hidden">&nbsp;[欠席]&nbsp;</span></div><div class="ivy-section" data-class-id="10044"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10044&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.8 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.133333 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.0666667 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 36</div><div>欠席: 6</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 6</div></div></div></div><button type="button" class="lms-memo-btn" data-tasks="[]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク</button></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">1</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10054/152456/" style="background-color: transparent; max-height: 1.2em;"><b>AWS CLF</b></a><br><div class="text-right"><small>滋野先生</small></div><div class="text-right"><small>教室 :</small> 902A</div><div class="ivy-section" data-class-id="10054"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10054&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.777778 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.0888889 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.133333 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 35</div><div>欠席: 4</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 4</div></div></div></div><button type="button" class="lms-memo-btn" data-tasks="[]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク</button></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">1</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">1</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">1</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">1</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10185/" style="background-color: transparent; max-height: 1.2em;"><b>Windowsサーバ</b></a><br><div class="text-right"><small>杉本先生</small></div><div class="text-right"><small>教室 :</small> 601</div><div class="ivy-section" data-class-id="10185"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10185&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.688889 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.177778 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.133333 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 31</div><div>欠席: 8</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 8</div></div></div></div><button type="button" class="lms-memo-btn lms-memo-has-text" data-tasks="[{&quot;id&quot;:&quot;5d275ead-51e4-49df-994f-cd37d7b4a741&quot;,&quot;text&quot;:&quot;タスクがあります&quot;,&quot;done&quot;:false}]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク (1)</button></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">1</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10189/" style="background-color: transparent; max-height: 1.2em;"><b>セキュリティ対策</b></a><br><div class="text-right"><small>杉本先生</small></div><div class="text-right"><small>教室 :</small> 405B</div><div class="ivy-section" data-class-id="10189"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10189&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.6 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.2 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.2 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 27</div><div>欠席: 9</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 9</div></div></div></div><button type="button" class="lms-memo-btn lms-memo-has-text" data-tasks="[{&quot;id&quot;:&quot;3349313e-14fa-4e4b-9cca-8b334ad6a7f0&quot;,&quot;text&quot;:&quot;問題作成、ウェブについて&quot;,&quot;done&quot;:false},{&quot;id&quot;:&quot;c0984a30-2315-48d0-8fa2-e25b6eb0d8e0&quot;,&quot;text&quot;:&quot;その他修正などを確認する&quot;,&quot;done&quot;:false}]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク (2)</button></section>  </div>
+</td>
+</tr>
+<tr>
+<td width="14%" class="top-timetable-table-td" style="background-color: rgba(255, 204, 204, 0.3);">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">2</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div><div class="text-left" style="font-size:9pt; font-weight:bold"><span style="background-color:#fcc" class="attendance-hidden">&nbsp;[欠席]&nbsp;</span></div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">2</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">2</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">2</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">2</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">2</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">2</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+</tr>
+<tr>
+<td width="14%" class="top-timetable-table-td" style="background-color: rgba(255, 204, 204, 0.3);">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">3</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div><div class="text-left" style="font-size:9pt; font-weight:bold"><span style="background-color:#fcc" class="attendance-hidden">&nbsp;[欠席]&nbsp;</span></div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">3</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">3</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">3</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">3</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">3</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">3</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+</tr>
+<tr>
+<td width="14%" class="top-timetable-table-td" style="background-color: rgba(204, 204, 255, 0.3);">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">4</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10053/" style="background-color: transparent; max-height: 1.2em;"><b>現場で通用する“仕事の基本”と仕事のつくり方</b></a><br><div class="text-right"><small>中城先生</small></div><div class="text-right"><small>教室 :</small> 503</div><div class="text-left" style="font-size:9pt; font-weight:bold"><span style="background-color:#ccf" class="attendance-hidden">&nbsp;[出席]&nbsp;</span></div><div class="ivy-section" data-class-id="10053"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10053&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.822222 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.0666667 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.111111 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 37</div><div>欠席: 3</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 3</div></div></div></div><button type="button" class="lms-memo-btn" data-tasks="[]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク</button></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">4</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10060/157018/" style="background-color: transparent; max-height: 1.2em;"><b>安全確保支援士</b></a><br><div class="text-right"><small>滋野先生</small></div><div class="text-right"><small>教室 :</small> 604</div><div class="ivy-section" data-class-id="10060"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10060&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.8 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.0666667 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.133333 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 36</div><div>欠席: 3</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 3</div></div></div></div><button type="button" class="lms-memo-btn" data-tasks="[]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク</button></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">4</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">4</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">4</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">4</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10587/" style="background-color: transparent; max-height: 1.2em;"><b>就職準備３</b></a><br><div class="text-right"><small>杉浦先生</small></div><div class="text-right"><small>教室 :</small> 902B</div><div class="ivy-section" data-class-id="10587"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10587&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.688889 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.177778 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.133333 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 31</div><div>欠席: 8</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 8</div></div></div></div><button type="button" class="lms-memo-btn lms-memo-has-text" data-tasks="[{&quot;id&quot;:&quot;2bda65cb-a5b0-480d-a87c-d193f55354a6&quot;,&quot;text&quot;:&quot;いろいろやらないと&quot;,&quot;done&quot;:false}]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク (1)</button></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">4</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10065/" style="background-color: transparent; max-height: 1.2em;"><b>ゼミナール2026Ⅰ</b></a><br><div class="text-right"><small>滋野先生</small></div><div class="text-right"><small>教室 :</small> 902A</div><div class="ivy-section" data-class-id="10065"><button class="ivy-attendance-button" onclick="checkAttendEntry(&#39;10065&#39;)" style="width: 100%; margin-bottom: 5px; padding: 2px 8px; background-color: rgb(178, 240, 230); color: rgb(119, 119, 119); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; font-size: 12px; cursor: pointer;">出席確認</button><div class="ivy-bar"><div class="ivy-actual-bar ivy-main-bar"><div class="ivy-bar-unit ivy-attended" style="flex: 0.644444 1 0%;"></div><div class="ivy-bar-unit ivy-public-absence" style="flex: 0 1 0%;"></div><div class="ivy-bar-unit ivy-absence" style="flex: 0.155556 1 0%;"></div><div class="ivy-bar-unit ivy-empty" style="flex: 0.2 1 0%;"></div></div><div class="ivy-actual-bar ivy-death-bar"><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit ivy-death-unit-dead"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div><div class="ivy-death-unit"></div></div><div class="ivy-bar-info ivy-main-bar-info"><div>総授業数: 45</div><div>出席: 29</div><div>欠席: 7</div><div>公欠: 0</div></div><div class="ivy-bar-info ivy-death-bar-info"><div>最大欠席数: 12</div><div>現在の欠席数: 7</div></div></div></div><button type="button" class="lms-memo-btn" data-tasks="[]"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="lms-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L11 18zM13 9V3.5L18.5 9H13z"></path></svg>タスク</button></section>  </div>
+</td>
+</tr>
+<tr>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">5</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">5</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">5</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">5</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">5</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">5</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">5</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+</tr>
+<tr>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">6</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">6</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">6</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">6</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">6</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">6</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">6</span> </div>
+  </div>
+  <div class="div-class-name"> 
+<section><div style="text-align:center">〃</div></section>  </div>
+</td>
+</tr>
+<tr>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">7</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">7</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">7</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">7</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">7</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">7</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+<td width="14%" class="top-timetable-table-td" style="">
+  <div class="div-unit-index">
+    <div class="div-unit-index-body"> <span class="vertical-align-middle">7</span> </div>
+  </div>
+  <div class="div-class-name"> 
+  </div>
+</td>
+</tr>
+</tbody></table>
+</div>
+				 <table class="table table-bordered table-week-data-content">
+					<tbody><tr class="week-shedule-content">
+						<td class="week-data-content first-day" width="14%" date="2026-07-16"></td>
+						<td class="week-data-content" width="14%" date="2026-07-17"></td>
+						<td class="week-data-content" width="14%" date="2026-07-18"></td>
+						<td class="week-data-content" width="14%" date="2026-07-19"></td>
+						<td class="week-data-content" width="14%" date="2026-07-20"></td>
+						<td class="week-data-content" width="14%" date="2026-07-21"></td>
+						<td class="week-data-content last-day" width="14%" date="2026-07-22"></td>
+					</tr>
+				</tbody></table>
+			</div>
+			</div>
+		</div><!--table-responsive-->
+	</div>
+	<div class="row sp-margin-none">
+					<div id="div-top-left" class="sp-padding-none col-sm-3">
+	<div id="div-joined-classes"><style>
+    .list-group-item{
+        padding-top: 2px;
+        padding-bottom: 0px;
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+    .list-group-item > div,
+    .list-group-item > a > div{
+        margin: 5px;
+    }
+	.classes-staff .class-subdirectory{
+		background-repeat: no-repeat;
+		background-position: 27px 10px;
+		background-image: url(/lms/common/images/icons/hierarchy.png);
+		padding-left: 52px;
+	}
+	.list-group.classes-staff span.who-of-class{
+		color: #999 !important;
+		margin-left: 5px;
+	}
+	.list-group.classes-staff .list-group-item:hover {
+		text-decoration: none;
+		background-color: #eee;
+	}
+	body.is_dragging .list-group.classes-staff .list-group-item,
+	body.is_dragging .list-group.classes-staff .list-group-item a {
+		pointer-events: none;
+	}
+	.list-group.classes-staff a:hover {
+		text-decoration: none;
+	}
+	.list-group-item a{
+		width: 90%;
+    }
+	.a-join-openclose .glyphicon{
+		color:#447722;
+	}
+</style>
+
+<script>
+	$(function(){
+		$('.a-join-openclose').off().on('click', function(){
+			var span = $(this).find('span');
+			var top = $(this).closest('.list-group-item');
+			var classId = $(top).attr('class_id');
+			if ($(span).hasClass('glyphicon-plus')) {
+				$(top).closest('.list-group').find('.class-directory').hide();
+				$(top).closest('.list-group').find('.glyphicon-minus').each(function(){
+					$(this).removeClass('glyphicon-minus');
+					$(this).addClass('glyphicon-plus');
+				});
+
+				$(span).removeClass('glyphicon-plus');
+				$(span).addClass('glyphicon-minus');
+				$(top).nextAll('[class_id=' + classId + ']').show();
+			} else {
+				$(span).removeClass('glyphicon-minus');
+				$(span).addClass('glyphicon-plus');
+				$(top).nextAll('[class_id=' + classId + ']').hide();
+			}
+			return false;
+		});
+	});
+</script>
+
+	<div class="panel panel-default sp-margin-bottom-none sp-border-none">
+		<div class="panel-heading text-center">
+			クラス一覧
+		</div>
+				<div class="list-group classes classes-student-view">
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a><script>$(function(){ $(".x-fancy").on("click", function(e) { e.preventDefault(); }); $(".x-fancy").fancybox({type:"image"});} )</script>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10054/">
+						AWS CLF
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10185/">
+						Windowsサーバ
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10189/">
+						セキュリティ対策
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10188/">
+						セキュリティ演習
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10065/">
+						ゼミナール2026Ⅰ
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10066/">
+						チームビルディング３Ⅰ
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10044/">
+						モバイル概論
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10060/">
+						安全確保支援士
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10587/">
+						就職準備３
+											</a>
+				</div><!--list-group-->
+							<div class="list-group-item">
+					<a class="x-fancy a-class-thumbnail" href="./岩崎学園スタログ_files/noimage-class.jpg" title="" style="width:25px;height:25px;"><span style="width:25px;height:25px;"><img src="./岩崎学園スタログ_files/noimage-class.jpg" alt="" style="max-width:25px;max-height:25px;"></span></a>
+					<a class="blue" href="https://portal.iwasaki.ac.jp/lms/class/10053/">
+						現場で通用する“仕事の基本”と仕事のつくり方
+											</a>
+				</div><!--list-group-->
+					<div class="text-right" style="margin:5px 0.5em 5px 5px">※終了科目は「マイページ」から閲覧</div></div><!--list-group-->
+					<div class="panel-body padding-md text-center">
+				<a href="https://portal.iwasaki.ac.jp/lms/class/publics/"><i class="glyphicon glyphicon-search"></i> 公開クラス</a>
+			</div><!--panel-body-->
+			</div><!--panel-->
+	
+	
+    </div>
+</div><!--col-->				<div id="div-top-right" class="sp-padding-none col-sm-9">
+<!-- 		<div id="div-timetable"></div> -->
+					<div id="div-news"><div class="panel panel-default sp-margin-bottom-none sp-border-bottom-none sp-border-top-none">
+	<div class="panel-heading">お知らせ</div>
+	<div class="sp-margin-bottom-md sp-padding-sm">
+		<table class="table-no-border table-info">
+			<tbody>
+									<tr>
+						<td>
+							<small class="gray">2026年7月3日(金) </small>
+							<div class="brown">メンテナンスのお知らせ</div>
+							<div class="cf">スタログの更新による停止のお知らせ<br><br>スタログの更新作業に伴い、以下の日時でスタログの停止を行います。<br>2026年8月7日 11:30～12:00<br>ご迷惑おかけして申し訳ございませんが、承知おきください。<br><br>尚、以降は、以下の日程でスタログの停止を予定しております。<br><br>2026年12月28日 バージョンアップのため(仮)<br>2027年3月30日 年度更新のため<br>2027年3月31日 年度更新のため<br>2027年8月16日 定期バージョンアップのため<br>2027年12月27日 定期バージョンアップのため</div>
+						</td>
+					</tr>
+							</tbody>
+		</table>
+	</div><!--table-responsive-->
+</div><!--panel--></div>
+			<div id="div-top-messages"></div>
+				<div id="div-classes"></div>
+		</div><!--col-->
+			</div><!--row-->
+
+				</div><!--container-->
+			</div><!--main-->
+			<footer>
+				<div class="container">
+					<div class="row">
+						<div class="col-sm-6">
+																								<a href="https://portal.iwasaki.ac.jp/lms/contact/"><img src="./岩崎学園スタログ_files/mail_read.png" alt="" class="icon"> お問い合わせ</a>
+																					</div><!--col-->
+						<div class="col-sm-6 text-right">
+							<p class="copyright">
+									<span data-version="ver:G06.A2312.2.0">　</span>
+							</p>
+						</div><!--col-->
+					</div><!--row-->
+				</div><!--container-->
+			</footer>
+		</div><!--v2-screen-->
+	</div><!--v2-container-->
+	
+	<div id="div-common-remote-modal" class="modal alert" tabindex="-1" role="dialog" aria-labelledby="" aria-hidden="true"></div>
+	<div id="div-common-alert-modal" class="modal alert" tabindex="-1" role="dialog" aria-labelledby="" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+					<h4 class="modal-title"></h4>
+				</div>
+				<div class="modal-body"></div>
+				<div class="modal-footer">
+					<button id="btn-common-alert-modal-ok" type="button" class="btn btn-primary size10">OK</button>
+				</div>
+			</div><!--modal-content-->
+		</div><!--modal-dialog-->
+	</div><!--modal-->
+		
+	<div id="div-common-confirm-modal" class="modal alert" tabindex="-1" role="dialog" aria-labelledby="" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h4 class="modal-title"></h4>
+				</div>
+				<div class="modal-body"></div>
+				<div class="modal-footer">
+					<button type="button" class="btn-common-confirm-modal-no btn btn-default size10 sp-size8">いいえ</button>
+					<button type="button" class="btn-common-confirm-modal-yes btn btn-primary size10 sp-size8">はい</button>
+				</div>
+			</div><!--modal-content-->
+		</div><!--modal-dialog-->
+	</div><!--modal-->
+
+	<div id="div-common-download-modal" class="modal alert" tabindex="-1" role="dialog" aria-labelledby="" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h4 class="modal-title">ダウンロード設定</h4>
+				</div>
+				<div class="modal-body">
+					<table class="table-horizontal">
+						<tbody><tr>
+							<th>文字コード</th>
+							<td>
+								<label><input type="radio" name="char_code" value="sjis" checked=""> Shift-JIS</label>
+								<br>
+								<label><input type="radio" name="char_code" value="utf8"> UTF-8(BOM)</label>
+							</td>
+						</tr>
+					</tbody></table>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn-common-confirm-modal-no btn btn-silver size8">キャンセル</button>
+					<button type="button" class="btn-common-confirm-modal-yes btn btn-primary size8">ダウンロード</button>
+				</div>
+			</div><!--modal-content-->
+		</div><!--modal-dialog-->
+	</div><!--modal-->
+
+	<script>
+					</script>
+
+<div id="viewport" style="background-color: transparent; position: fixed; overflow: hidden; display: block; z-index: 999999; left: 0px; top: 0px; zoom: 1; width: 100%; height: 100%; margin: 0px; padding: 0px;"></div></body></html>
