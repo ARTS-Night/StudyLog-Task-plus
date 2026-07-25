@@ -10,185 +10,9 @@
   const ALL_DONE_CLASS = "lms-memo-all-done";
   // 保存先モード（設定ページで切り替え）: "sync" = Google アカウントで同期 / "local" = この端末のみ
   const MODE_KEY = "__storage_mode__";
-  const CLASS_LOCK_PREFIX = "stalog-task-class:";
-  // 専用タスク画面 (tasks.js) の保留タスクと同じキー形式。互換して同時に使っても壊れない。
-  const PENDING_ADD_PREFIX = "__pending_task_add__:";
-  const PENDING_ADDS_LEGACY_KEY = "__pending_task_adds__";
   let storage = chrome.storage.sync;
   let storageMode = "sync";
   let storageModeReady = false;
-  // 初回同期の確認前に追加された保留タスクを、確認後にまとめて反映した完了合図。
-  // 各ポップアップはこれを待ってから実データを読み直し、反映前の空データを読まないようにする。
-  let pendingAddsFlushed = Promise.resolve();
-
-  function getCurrentTaskStorage() {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.get([MODE_KEY], (result) => {
-        if (chrome.runtime.lastError || !result) {
-          reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "保存先を確認できませんでした"));
-          return;
-        }
-        // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
-        resolve(TaskLifecycle.physicalStorageMode(result[MODE_KEY]) === "local"
-          ? chrome.storage.local
-          : chrome.storage.sync);
-      });
-    });
-  }
-
-  function storageGet(area, keys) {
-    return new Promise((resolve, reject) => {
-      area.get(keys, (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        resolve(result || {});
-      });
-    });
-  }
-
-  function storageSet(area, items) {
-    return new Promise((resolve, reject) => {
-      area.set(items, () => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        resolve();
-      });
-    });
-  }
-
-  function storageRemove(area, keys) {
-    return new Promise((resolve, reject) => {
-      area.remove(keys, () => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        resolve();
-      });
-    });
-  }
-
-  function normalizePendingAdd(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    const id = typeof value.id === "string" ? value.id.trim() : "";
-    const classId = typeof value.classId === "string" || typeof value.classId === "number"
-      ? String(value.classId).trim() : "";
-    const text = typeof value.text === "string" ? value.text.trim() : "";
-    if (!id || !/^\d+$/.test(classId) || !text) return null;
-    const subject = typeof value.subject === "string" ? value.subject.trim() : "";
-    const createdAt = TaskLifecycle.normalizeTimestamp(value.createdAt);
-    return { id, classId, subject, text, createdAt };
-  }
-
-  async function readAllPendingAdds() {
-    const items = await storageGet(chrome.storage.local, null);
-    const fromKeys = Object.entries(items)
-      .filter(([key]) => key.startsWith(PENDING_ADD_PREFIX))
-      .map(([key, value]) => {
-        const normalized = normalizePendingAdd(value);
-        return normalized && key === `${PENDING_ADD_PREFIX}${normalized.id}` ? normalized : null;
-      })
-      .filter(Boolean);
-    const legacy = Array.isArray(items[PENDING_ADDS_LEGACY_KEY])
-      ? items[PENDING_ADDS_LEGACY_KEY].map(normalizePendingAdd).filter(Boolean)
-      : [];
-    const seen = new Set();
-    return [...fromKeys, ...legacy].filter((item) => {
-      if (seen.has(item.id)) return false;
-      seen.add(item.id);
-      return true;
-    });
-  }
-
-  async function readPendingAddsForClass(targetClassId) {
-    const all = await readAllPendingAdds();
-    return all.filter((item) => item.classId === String(targetClassId));
-  }
-
-  function appendPendingAdd(item) {
-    return storageSet(chrome.storage.local, { [`${PENDING_ADD_PREFIX}${item.id}`]: item });
-  }
-
-  async function removePendingAddIds(ids) {
-    if (ids.length === 0) return;
-    const idSet = new Set(ids);
-    const result = await storageGet(chrome.storage.local, [PENDING_ADDS_LEGACY_KEY]);
-    const legacyNext = (Array.isArray(result[PENDING_ADDS_LEGACY_KEY]) ? result[PENDING_ADDS_LEGACY_KEY] : [])
-      .map(normalizePendingAdd)
-      .filter((item) => item && !idSet.has(item.id));
-    if (legacyNext.length > 0) {
-      await storageSet(chrome.storage.local, { [PENDING_ADDS_LEGACY_KEY]: legacyNext });
-    } else {
-      await storageRemove(chrome.storage.local, [PENDING_ADDS_LEGACY_KEY]);
-    }
-    await storageRemove(chrome.storage.local, ids.map((id) => `${PENDING_ADD_PREFIX}${id}`));
-  }
-
-  // 初回同期の確認後にまとめて実データへ反映する。授業ごとに TaskMutationLock 経由で
-  // ロックし、他の保存処理と交錯しないようにする。
-  function flushPendingAdds() {
-    return TaskMutationLock.request(async () => {
-      const mutationStorage = await getCurrentTaskStorage();
-      const all = await readAllPendingAdds();
-      if (all.length === 0) return;
-
-      const byClass = new Map();
-      all.forEach((item) => {
-        if (!byClass.has(item.classId)) byClass.set(item.classId, []);
-        byClass.get(item.classId).push(item);
-      });
-
-      for (const [targetClassId, additions] of byClass) {
-        const run = async () => {
-          const result = await storageGet(mutationStorage, [targetClassId]);
-          const latest = normalizeEntry(result[targetClassId], targetClassId);
-          additions.forEach((item) => {
-            const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
-            if (existingIndex >= 0) {
-              // 旧版で「本体保存成功・保留削除失敗」になった場合、保留側にだけ
-              // 残っている正確な追加日時を復旧してから保留キーを削除する。
-              if (!TaskLifecycle.normalizeTimestamp(latest.tasks[existingIndex].createdAt) && item.createdAt) {
-                latest.tasks[existingIndex] = { ...latest.tasks[existingIndex], createdAt: item.createdAt };
-              }
-              return;
-            }
-            const task = { id: item.id, text: item.text, done: false };
-            if (item.createdAt) task.createdAt = item.createdAt;
-            latest.tasks.push(task);
-          });
-          const subject = latest.subject || additions[0].subject || "";
-          await storageSet(mutationStorage, { [targetClassId]: { subject, tasks: latest.tasks } });
-        };
-        try {
-          if (navigator.locks && typeof navigator.locks.request === "function") {
-            await navigator.locks.request(`${CLASS_LOCK_PREFIX}${targetClassId}`, { mode: "exclusive" }, run);
-          } else {
-            await run();
-          }
-          await removePendingAddIds(additions.map((item) => item.id));
-        } catch (error) {
-          // 1授業の反映失敗で他授業の保留分まで止めない。失敗分はキューへ残し、
-          // 次回の初回同期確認（次のページ表示）で再試行する。
-          console.warn(`授業${targetClassId}の保留タスクを反映できませんでした`, error);
-        }
-      }
-    }).catch((error) => {
-      console.warn("保留タスクの反映に失敗しました", error);
-    });
-  }
-
-  function runClassMutation(classId, operation) {
-    return TaskMutationLock.request(() => getCurrentTaskStorage().then((mutationStorage) => {
-      const run = () => new Promise((resolve) => operation(mutationStorage, resolve));
-      return navigator.locks && typeof navigator.locks.request === "function"
-        ? navigator.locks.request(`${CLASS_LOCK_PREFIX}${classId}`, { mode: "exclusive" }, run)
-        : run();
-    }));
-  }
 
   // 初回同期ガード本体は sync-guard.js（content.js より先に読み込まれる）
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
@@ -209,9 +33,6 @@
 
     SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
     LocalTaskStore.init(mode);
-    SyncGuard.when(() => {
-      pendingAddsFlushed = LocalTaskStore.flush();
-    });
 
     addStyle();
     addMemoButtons();
@@ -1518,12 +1339,4 @@
     toastTimer = setTimeout(() => toast.classList.remove("show"), 2200);
   }
 
-  function showSavedToast(savedStorage = storage) {
-    // Chrome の同期が実際にオンかどうかは拡張機能からは検知できないため、断定しない文言にする
-    showToast(
-      savedStorage === chrome.storage.sync
-        ? "✓ 保存しました（Chrome の同期がオンなら他の端末にも反映されます）"
-        : "✓ 保存しました（この端末のみ）"
-    );
-  }
 })();

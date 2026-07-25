@@ -26,8 +26,9 @@ function createRuntime() {
     runtime: { lastError: null },
     storage: {
       local: {
-        set(items) {
+        set(items, callback) {
           localSetCalls.push({ ...items });
+          callback?.();
         }
       },
       sync: {

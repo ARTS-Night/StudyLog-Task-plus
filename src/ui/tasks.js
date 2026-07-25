@@ -53,7 +53,6 @@
   let loadGeneration = 0;
   let refreshAfterBusy = false;
   let flushAfterBusy = false;
-  let flushingPending = false;
   let catalogRefreshAttempted = false;
   let catalogTabId = null;
   let catalogTabBaseline = 0;
@@ -256,16 +255,6 @@
     const result = pendingAddsFromStorage(items);
     pendingStateUnknown = false;
     return result;
-  }
-
-  async function appendPendingAdd(item) {
-    await storageSet(chrome.storage.local, { [`${PENDING_ADD_PREFIX}${item.id}`]: item });
-    try {
-      pendingAdds = await readPendingAdds();
-    } catch (error) {
-      pendingStateUnknown = true;
-      pendingAdds = normalizePendingAdds([...pendingAdds, item]);
-    }
   }
 
   async function removePendingAddIds(ids) {
@@ -786,33 +775,6 @@
     return saved;
   }
 
-  async function queuePendingTask(selected, text, createdAt) {
-    setBusy(true);
-    let saved = false;
-    try {
-      const item = {
-        id: TaskLifecycle.createTaskId(),
-        classId: selected.classId,
-        subject: selected.subject,
-        text,
-        year: yearSelect.value,
-        createdAt
-      };
-      await withLock(PENDING_FLUSH_LOCK, () => appendPendingAdd(item));
-      saved = true;
-      renderTasks();
-      newTaskText.value = "";
-      showSyncStatus();
-    } catch (error) {
-      showStatus(makeError("タスクを端末に保留できませんでした", error).message, true, true);
-    } finally {
-      if (saved && ready) flushAfterBusy = true;
-      finishBusy();
-      if (saved) newTaskText.focus();
-    }
-    return saved;
-  }
-
   async function flushPendingAdds() {
     if (!ready) return false;
     if (busy) {
@@ -821,7 +783,6 @@
     }
 
     setBusy(true);
-    flushingPending = true;
     let completed = false;
     let snapshot = [];
     try {
@@ -905,7 +866,6 @@
       );
       return false;
     } finally {
-      flushingPending = false;
       if (completed && pendingAdds.length > 0) flushAfterBusy = true;
       finishBusy();
     }
@@ -1084,26 +1044,6 @@
     }
   }
 
-  async function handlePendingStorageChange() {
-    try {
-      pendingAdds = await readPendingAdds();
-      renderTasks();
-      if (!ready) {
-        showSyncStatus();
-        return;
-      }
-      if (pendingAdds.length === 0 || flushingPending) return;
-      if (busy) {
-        flushAfterBusy = true;
-      } else {
-        void flushPendingAdds();
-      }
-    } catch (error) {
-      pendingStateUnknown = true;
-      showStatus(makeError("保留タスクの状態を確認できませんでした", error).message, true, true);
-    }
-  }
-
   function onStorageChanged(changes, areaName) {
     // driveモードの自動同期の結果を通知する（同期はService Workerが行う）
     if (areaName === "local" && changes["__drive_synced_at__"]
@@ -1141,7 +1081,6 @@
 
     const catalogChanged = areaName === "local"
       && (!!changes[CATALOG_KEY] || !!changes[PARTIAL_CATALOG_KEY]);
-    const pendingChanged = false;
     if (catalogChanged) {
       if (changes[CATALOG_KEY]) {
         fullCatalog = normalizeCatalog(changes[CATALOG_KEY].newValue);
@@ -1153,9 +1092,6 @@
       rebuildCatalogIndex();
       renderCatalogControls(true);
       renderTasks();
-    }
-    if (pendingChanged) {
-      void handlePendingStorageChange();
     }
 
     const tasksChanged = (areaName === watchedArea && Object.keys(changes).some((key) => /^\d+$/.test(key)))

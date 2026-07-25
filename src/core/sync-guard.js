@@ -30,7 +30,10 @@ const SyncGuard = (() => {
     if (ready) return;
     ready = true;
     if (persistFlag) {
-      chrome.storage.local.set({ [READY_KEY]: Date.now() });
+      chrome.storage.local.set({ [READY_KEY]: Date.now() }, () => {
+        // 準備完了の判定自体は済んでいるため、印の保存失敗で待機へ戻さない。
+        void chrome.runtime.lastError;
+      });
     }
     callbacks.splice(0).forEach((cb) => cb());
   }

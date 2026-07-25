@@ -829,9 +829,19 @@
   function refreshUsage() {
     const area = currentArea();
     area.getBytesInUse(null, (bytes) => {
+      if (chrome.runtime.lastError) {
+        usageEl.textContent = `使用量を確認できませんでした: ${chrome.runtime.lastError.message}`;
+        return;
+      }
       const quota = currentQuota();
       const percent = ((bytes / quota) * 100).toFixed(1);
       area.get(null, (items) => {
+        if (chrome.runtime.lastError || !items) {
+          usageEl.textContent = `タスク数を確認できませんでした: ${chrome.runtime.lastError
+            ? chrome.runtime.lastError.message
+            : "ストレージ結果がありません"}`;
+          return;
+        }
         const subjectCount = taskEntries(items).length;
         usageEl.innerHTML = "";
 
