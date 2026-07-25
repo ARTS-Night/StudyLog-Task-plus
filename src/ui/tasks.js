@@ -51,6 +51,8 @@
   let catalogTabId = null;
   let catalogTabBaseline = 0;
   let catalogTabTimer = null;
+  let syncToastTimer = null;
+  let modeGeneration = 0;
 
   function emptyCatalog() {
     return { updatedAt: 0, fullUpdatedAt: 0, years: {} };
@@ -208,6 +210,75 @@
 
   function showSyncStatus() {
     showStatus("端末に保存した変更は、同期確認後に自動反映します。", false, true);
+  }
+
+  function scheduleSyncStatus() {
+    clearTimeout(syncToastTimer);
+    syncToastTimer = setTimeout(() => {
+      syncToastTimer = null;
+      if (storageModeReady && mode === "sync") showStatus("同期しました", false);
+    }, 1800);
+  }
+
+  function applyMode(nextMode) {
+    mode = nextMode;
+    storageModeReady = true;
+    storage = mode === "sync" ? chrome.storage.sync : chrome.storage.local;
+    watchedArea = mode === "sync" ? "sync" : "local";
+    loadGeneration += 1;
+  }
+
+  function startModeLifecycle(nextMode, readyAt, generation) {
+    if (generation !== modeGeneration) return;
+    SyncGuard.init(nextMode, readyAt);
+    LocalTaskStore.init(nextMode);
+    if (busy) refreshAfterBusy = true;
+    else void loadAll({ silent: true, preserveYear: false });
+    SyncGuard.when(() => {
+      if (generation !== modeGeneration) return;
+      void (async () => {
+        let cleanupNotice = "";
+        let cleanupError = false;
+        try {
+          await LocalTaskStore.flush();
+          const cleanupResult = await TaskLifecycle.cleanup(nextMode);
+          if (cleanupResult.failed > 0) {
+            cleanupNotice = cleanupResult.deleted + "件を削除しましたが、"
+              + cleanupResult.failed + "授業の自動整理に失敗しました";
+            cleanupError = true;
+          } else if (cleanupResult.deleted > 0) {
+            cleanupNotice = "期限を過ぎた完了タスクを" + cleanupResult.deleted + "件削除しました";
+          }
+        } catch (error) {
+          cleanupNotice = makeError("同期処理を完了できませんでした", error).message;
+          cleanupError = true;
+        }
+        if (generation !== modeGeneration) return;
+        if (busy) {
+          refreshAfterBusy = true;
+        } else {
+          const loaded = await loadAll({ silent: true, preserveYear: false });
+          if (!loaded || generation !== modeGeneration) return;
+        }
+        if (cleanupNotice) showStatus(cleanupNotice, cleanupError, cleanupError);
+      })();
+    });
+  }
+
+  function reinitializeMode(nextMode) {
+    const generation = ++modeGeneration;
+    clearTimeout(syncToastTimer);
+    syncToastTimer = null;
+    applyMode(nextMode);
+    SyncGuard.reset();
+    chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+      if (generation !== modeGeneration) return;
+      const storedMode = !chrome.runtime.lastError && result
+        ? TaskLifecycle.physicalStorageMode(result[MODE_KEY])
+        : nextMode;
+      if (storedMode !== nextMode) return;
+      startModeLifecycle(nextMode, result && result[SyncGuard.READY_KEY], generation);
+    });
   }
 
   function renderFatal(message) {
@@ -766,15 +837,13 @@
     if (areaName === "local" && storageModeReady && mode === "sync"
       && changes["__task_sync_flushed_at__"]
       && typeof changes["__task_sync_flushed_at__"].newValue === "number") {
-      showStatus("同期しました", false);
+      scheduleSyncStatus();
     }
 
     if (areaName === "local" && changes[MODE_KEY]) {
       const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== mode) {
-        // localで即時readyになったSyncGuardをsyncへ持ち越さず、
-        // 初回同期確認を新しい実行コンテキストでやり直す。
-        window.location.reload();
+        reinitializeMode(nextMode);
         return;
       }
     }
@@ -843,10 +912,7 @@
   storageGet(chrome.storage.local, null)
     .then((result) => {
       // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
-      mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
-      storageModeReady = true;
-      storage = mode === "sync" ? chrome.storage.sync : chrome.storage.local;
-      watchedArea = mode === "sync" ? "sync" : "local";
+      applyMode(TaskLifecycle.physicalStorageMode(result[MODE_KEY]));
       fullCatalog = normalizeCatalog(result[CATALOG_KEY]);
       partialCatalog = normalizeCatalog(result[PARTIAL_CATALOG_KEY]);
       catalog = combineCatalogs(fullCatalog, partialCatalog);
@@ -855,32 +921,8 @@
       renderCatalogControls(false);
       renderTasks();
 
-      SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
-      LocalTaskStore.init(mode);
-      void loadAll({ silent: true, preserveYear: false });
-      SyncGuard.when(() => {
-        void (async () => {
-          let cleanupNotice = "";
-          let cleanupError = false;
-          try {
-            await LocalTaskStore.flush();
-            const cleanupResult = await TaskLifecycle.cleanup(mode);
-            if (cleanupResult.failed > 0) {
-              cleanupNotice = cleanupResult.deleted + "件を削除しましたが、"
-                + cleanupResult.failed + "授業の自動整理に失敗しました";
-              cleanupError = true;
-            } else if (cleanupResult.deleted > 0) {
-              cleanupNotice = "期限を過ぎた完了タスクを" + cleanupResult.deleted + "件削除しました";
-            }
-          } catch (error) {
-            cleanupNotice = makeError("同期処理を完了できませんでした", error).message;
-            cleanupError = true;
-          }
-          const loaded = await loadAll({ silent: true, preserveYear: false });
-          if (!loaded) return;
-          if (cleanupNotice) showStatus(cleanupNotice, cleanupError, cleanupError);
-        })();
-      });
+      const generation = ++modeGeneration;
+      startModeLifecycle(mode, result[SyncGuard.READY_KEY], generation);
     })
     .catch((error) => {
       renderFatal(makeError("保存先を確認できませんでした", error).message);

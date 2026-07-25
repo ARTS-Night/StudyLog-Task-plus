@@ -66,6 +66,20 @@ assert.doesNotMatch(
   "自動削除設定は設定ページへ集約し、専用画面には置かない"
 );
 
+[
+  "src/lms/content.js",
+  "src/ui/tasks.js",
+  "src/ui/popup.js"
+].forEach((scriptFile) => {
+  const source = fs.readFileSync(path.join(__dirname, "..", scriptFile), "utf8");
+  assert.doesNotMatch(source, /window\.location\.reload\(\)/,
+    `${scriptFile} の保存先切替はページ全体を再読み込みしない`);
+  assert.match(source, /SyncGuard\.reset\(\)/,
+    `${scriptFile} の保存先切替は前モードの同期ガードを破棄する`);
+  assert.match(source, /setTimeout\([\s\S]*?1800\)/,
+    `${scriptFile} はsync完了通知を受信側でデバウンスする`);
+});
+
 const catalogEntries = scripts.filter((entry) =>
   entry.matches.includes(lmsMatch) && entry.js && entry.js.includes("src/lms/class-catalog.js")
 );

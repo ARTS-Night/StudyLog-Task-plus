@@ -167,8 +167,74 @@ function testLocalModeIsImmediateAndNotPersisted() {
   assert.equal(calledImmediately, true, "callbacks registered after local init must run immediately");
 }
 
+function testResetCancelsInflightInitAndClearsCallbacks() {
+  const runtime = createRuntime();
+  let staleCallbackCount = 0;
+  runtime.guard.when(() => {
+    staleCallbackCount += 1;
+  });
+  runtime.guard.init("sync");
+  const staleGet = runtime.syncGetCallbacks[0];
+
+  runtime.guard.reset();
+
+  assert.equal(runtime.guard.isReady(), false);
+  assert.equal(runtime.listeners.size, 0, "reset must remove the previous sync listener");
+  assert.equal(runtime.timers.size, 0, "reset must clear the previous timeout");
+  staleGet({ "100": { tasks: [] } });
+  assert.equal(staleCallbackCount, 0, "callbacks queued for the old mode must be discarded");
+  assert.equal(runtime.localSetCalls.length, 0, "a late get from the old generation must be ignored");
+
+  let localCallbackCount = 0;
+  runtime.guard.when(() => {
+    localCallbackCount += 1;
+  });
+  runtime.guard.init("local");
+  assert.equal(runtime.guard.isReady(), true);
+  assert.equal(localCallbackCount, 1, "the new local generation must become ready exactly once");
+  assert.equal(runtime.localSetCalls.length, 0);
+}
+
+function testRapidModeTransitionsKeepOnlyLatestSyncAttempt() {
+  const runtime = createRuntime();
+
+  runtime.guard.init("sync");
+  const firstGet = runtime.syncGetCallbacks[0];
+  runtime.guard.reset();
+  runtime.guard.init("drive");
+  assert.equal(runtime.guard.isReady(), true, "drive mode must be ready immediately");
+
+  runtime.guard.reset();
+  let latestCallbackCount = 0;
+  runtime.guard.when(() => {
+    latestCallbackCount += 1;
+  });
+  runtime.guard.init("sync");
+  const latestGet = runtime.syncGetCallbacks[1];
+
+  assert.equal(runtime.guard.isReady(), false);
+  assert.equal(runtime.listeners.size, 1, "only the latest sync listener may remain");
+  assert.equal(runtime.timers.size, 1, "only the latest sync timeout may remain");
+
+  firstGet({ "100": { tasks: [] } });
+  assert.equal(runtime.guard.isReady(), false, "a stale sync read must not settle the latest generation");
+  assert.equal(latestCallbackCount, 0);
+
+  latestGet({ "200": { tasks: [] } });
+  assert.equal(runtime.guard.isReady(), true);
+  assert.equal(latestCallbackCount, 1, "the latest callback must fire once");
+  assert.equal(runtime.listeners.size, 0);
+  assert.equal(runtime.timers.size, 0);
+
+  runtime.emitStorageChange({ "300": { newValue: { tasks: [] } } }, "sync");
+  assert.equal(latestCallbackCount, 1, "late events must not double-fire callbacks");
+  assert.equal(runtime.localSetCalls.length, 1);
+}
+
 testChangeBeforeGetCompletes();
 testEmptySyncTimeoutDoesNotPersist();
 testLocalModeIsImmediateAndNotPersisted();
+testResetCancelsInflightInitAndClearsCallbacks();
+testRapidModeTransitionsKeepOnlyLatestSyncAttempt();
 
 console.log("sync guard test: ok");

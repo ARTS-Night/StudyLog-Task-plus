@@ -13,6 +13,7 @@ const SyncGuard = (() => {
 
   let ready = false;
   const callbacks = [];
+  let cancelPendingInit = null;
 
   function when(callback) {
     if (ready) {
@@ -38,6 +39,13 @@ const SyncGuard = (() => {
     callbacks.splice(0).forEach((cb) => cb());
   }
 
+  function reset() {
+    if (cancelPendingInit) cancelPendingInit();
+    cancelPendingInit = null;
+    ready = false;
+    callbacks.splice(0);
+  }
+
   // mode: "sync" | "local" | "drive"、readyAt: __sync_ready__ に保存済みの確認日時
   function init(mode, readyAt) {
     // "sync" 以外（ローカル・ドライブ共有）は chrome.storage.local が実体なので、
@@ -58,11 +66,16 @@ const SyncGuard = (() => {
     // 最初に確認できた経路だけで完了させる。
     let settled = false;
     let timeoutId = null;
-    const finish = (persistFlag) => {
+    const cancel = () => {
       if (settled) return;
       settled = true;
       chrome.storage.onChanged.removeListener(listener);
       if (timeoutId !== null) clearTimeout(timeoutId);
+    };
+    const finish = (persistFlag) => {
+      if (settled) return;
+      cancel();
+      if (cancelPendingInit === cancel) cancelPendingInit = null;
       markReady(persistFlag);
     };
     const listener = (changes, areaName) => {
@@ -70,6 +83,7 @@ const SyncGuard = (() => {
       finish(true);
     };
     chrome.storage.onChanged.addListener(listener);
+    cancelPendingInit = cancel;
 
     // ponytail: 本当に空のアカウント（新規ユーザー）は判別できないため、
     // 20 秒待っても何も届かなければ空とみなして許可する。
@@ -89,5 +103,5 @@ const SyncGuard = (() => {
     });
   }
 
-  return { init, when, isReady, READY_KEY };
+  return { init, reset, when, isReady, READY_KEY };
 })();

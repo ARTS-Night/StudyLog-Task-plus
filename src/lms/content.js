@@ -13,6 +13,85 @@
   let storage = chrome.storage.sync;
   let storageMode = "sync";
   let storageModeReady = false;
+  let syncToastTimer = null;
+  let modeGeneration = 0;
+
+  function scheduleSyncToast() {
+    clearTimeout(syncToastTimer);
+    syncToastTimer = setTimeout(() => {
+      syncToastTimer = null;
+      if (storageModeReady && storageMode === "sync") showToast("同期しました");
+    }, 1800);
+  }
+
+  function wireSyncLifecycle(mode, readyAt, shouldReset) {
+    const generation = ++modeGeneration;
+    storageMode = mode;
+    storageModeReady = true;
+    storage = mode === "sync" ? chrome.storage.sync : chrome.storage.local;
+    if (shouldReset) SyncGuard.reset();
+    SyncGuard.init(mode, readyAt);
+    LocalTaskStore.init(mode);
+
+    // all_framesで同じページ内のiframeにも入るため、自動整理は最上位文書だけで行う。
+    if (!window.top || window.top === window) {
+      SyncGuard.when(() => {
+        if (generation !== modeGeneration) return;
+        void LocalTaskStore.flush();
+        void TaskLifecycle.cleanup(mode)
+          .then((result) => {
+            if (generation !== modeGeneration) return;
+            if (result.failed > 0) {
+              console.warn(`${result.failed}授業の完了タスクを自動整理できませんでした`, result.errors);
+            }
+          })
+          .catch((error) => {
+            if (generation === modeGeneration) {
+              console.warn("完了タスクを自動整理できませんでした", error);
+            }
+          });
+      });
+    }
+  }
+
+  function refreshInjectedTaskUi() {
+    addMemoButtons();
+    document.querySelectorAll("." + BUTTON_CLASS).forEach((button) => {
+      const classId = button.dataset.classId;
+      if (/^\d+$/.test(classId || "")) {
+        const generation = modeGeneration;
+        void LocalTaskStore.readClass(classId).then((entry) => {
+          if (generation === modeGeneration) updateClassButtons(classId, entry);
+        });
+      }
+    });
+    insertHomeTaskWidget();
+    refreshHomeTaskWidget();
+    initClassPagePanel();
+    const popup = document.getElementById(POPUP_ID);
+    if (popup && typeof popup.refreshTasks === "function") popup.refreshTasks();
+    const embedded = document.getElementById(EMBED_ID);
+    if (embedded && typeof embedded.refreshTasks === "function") embedded.refreshTasks();
+  }
+
+  function reinitializeMode(nextMode) {
+    clearTimeout(syncToastTimer);
+    syncToastTimer = null;
+    const requestGeneration = modeGeneration + 1;
+    modeGeneration = requestGeneration;
+    storageMode = nextMode;
+    storage = nextMode === "sync" ? chrome.storage.sync : chrome.storage.local;
+    SyncGuard.reset();
+    chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+      if (requestGeneration !== modeGeneration) return;
+      const storedMode = !chrome.runtime.lastError && result
+        ? TaskLifecycle.physicalStorageMode(result[MODE_KEY])
+        : nextMode;
+      if (storedMode !== nextMode) return;
+      wireSyncLifecycle(nextMode, result && result[SyncGuard.READY_KEY], false);
+      refreshInjectedTaskUi();
+    });
+  }
 
   // 初回同期ガード本体は sync-guard.js（content.js より先に読み込まれる）
   chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
@@ -25,14 +104,7 @@
     }
     // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
     const mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
-    storageMode = mode;
-    storageModeReady = true;
-    if (mode === "local") {
-      storage = chrome.storage.local;
-    }
-
-    SyncGuard.init(mode, result[SyncGuard.READY_KEY]);
-    LocalTaskStore.init(mode);
+    wireSyncLifecycle(mode, result[SyncGuard.READY_KEY], false);
 
     addStyle();
     addMemoButtons();
@@ -42,27 +114,13 @@
     insertNavSettingsLink();
     observeDynamicSections();
 
-    // all_framesで同じページ内のiframeにも入るため、自動整理は最上位文書だけで行う。
-    if (!window.top || window.top === window) {
-      SyncGuard.when(() => {
-        void TaskLifecycle.cleanup(storageMode)
-          .then((result) => {
-            if (result.failed > 0) {
-              console.warn(`${result.failed}授業の完了タスクを自動整理できませんでした`, result.errors);
-            }
-          })
-          .catch((error) => {
-            console.warn("完了タスクを自動整理できませんでした", error);
-          });
-      });
-    }
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && changes[MODE_KEY]) {
       const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== storageMode) {
-        window.location.reload();
+        reinitializeMode(nextMode);
         return;
       }
     }
@@ -87,12 +145,13 @@
       if (storageModeReady && storageMode === "sync"
         && changes["__task_sync_flushed_at__"]
         && typeof changes["__task_sync_flushed_at__"].newValue === "number") {
-        showToast("同期しました");
+        scheduleSyncToast();
       }
     }
 
     // sync変更はミラーへ保存された後に、未反映outboxを重ねて全表示面を更新する。
-    const taskChanged = (areaName === storageMode
+    const watchedArea = storageMode === "sync" ? "sync" : "local";
+    const taskChanged = (areaName === watchedArea
       && Object.keys(changes).some((key) => /^\d+$/.test(key)))
       || LocalTaskStore.isLocalChange(changes, areaName);
     if (!taskChanged) return;
@@ -100,8 +159,13 @@
     document.querySelectorAll("." + BUTTON_CLASS).forEach((button) => {
       if (/^\d+$/.test(button.dataset.classId || "")) classIds.add(button.dataset.classId);
     });
-    classIds.forEach((classId) => void LocalTaskStore.readClass(classId)
-      .then((entry) => updateClassButtons(classId, entry)));
+    classIds.forEach((classId) => {
+      const generation = modeGeneration;
+      void LocalTaskStore.readClass(classId)
+        .then((entry) => {
+          if (generation === modeGeneration) updateClassButtons(classId, entry);
+        });
+    });
     refreshHomeTaskWidget();
   });
 
@@ -569,7 +633,10 @@
     // 個々のボタンから storage.get() すると、初期表示時のIPCと正規化が重複する。
     const classIds = Array.from(addedClassIds);
     classIds.forEach((classId) => {
-      void LocalTaskStore.readClass(classId).then((entry) => updateClassButtons(classId, entry));
+      const generation = modeGeneration;
+      void LocalTaskStore.readClass(classId).then((entry) => {
+        if (generation === modeGeneration) updateClassButtons(classId, entry);
+      });
     });
   }
 
@@ -737,8 +804,10 @@
     }
 
     async function load() {
+      const generation = modeGeneration;
       try {
         const result = await LocalTaskStore.readAll();
+        if (generation !== modeGeneration) return;
         let order = 0;
         allTasks = [];
         Object.entries(result).forEach(([classId, entry]) => {
@@ -755,7 +824,7 @@
         });
         render();
       } catch (error) {
-        showLoadError(error);
+        if (generation === modeGeneration) showLoadError(error);
       }
     }
 
@@ -949,14 +1018,16 @@
     body.append(listEl, form, buttonsRow);
 
     async function load() {
+      const generation = modeGeneration;
       try {
         const entry = await LocalTaskStore.readClass(classId);
+        if (generation !== modeGeneration) return;
         tasks = entry.tasks;
         subject = entry.subject || subject;
         renderList();
         onTasksChanged(tasks);
       } catch (error) {
-        showToast("タスクを読み込めませんでした: " + error.message);
+        if (generation === modeGeneration) showToast("タスクを読み込めませんでした: " + error.message);
       }
     }
     function persist(operation) {
@@ -1062,13 +1133,14 @@
     });
     const onStorageChanged = (changes, areaName) => {
       if (!body.isConnected) { destroy(); return; }
-      const syncChanged = areaName === storageMode && !!changes[classId];
+      const watchedArea = storageMode === "sync" ? "sync" : "local";
+      const syncChanged = areaName === watchedArea && !!changes[classId];
       if (syncChanged || LocalTaskStore.isLocalChange(changes, areaName)) void load();
     };
     chrome.storage.onChanged.addListener(onStorageChanged);
     function destroy() { chrome.storage.onChanged.removeListener(onStorageChanged); }
     void load();
-    return { element: body, closeForm, destroy };
+    return { element: body, closeForm, destroy, refresh: load };
   }
 
   function openTaskPopup(classId, subjectName, buttonEl) {
@@ -1153,6 +1225,7 @@
 
     popup.outsideClickHandler = handleOutsideClick;
     popup.destroyManager = manager.destroy;
+    popup.refreshTasks = manager.refresh;
 
     setTimeout(() => {
       document.addEventListener("mousedown", handleOutsideClick, true);
@@ -1203,6 +1276,7 @@
       // 授業ページでは科目名が確実に取れないため、保存済みの科目名を維持する
       subjectName: ""
     });
+    panel.refreshTasks = manager.refresh;
 
     bodyWrap.appendChild(manager.element);
     panel.append(heading, bodyWrap);

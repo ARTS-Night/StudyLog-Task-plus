@@ -189,6 +189,8 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 - sync 領域にデータがある、または `chrome.storage.onChanged` が発火した場合だけ `__sync_ready__` の時刻を保存します。
 - 20秒のタイムアウトは「空の新規アカウントかもしれない」とみなして今回だけ処理を許可しますが、準備完了時刻は保存しません。
 - local モードは直ちに準備完了にしますが、後で sync へ戻す場合に備えて準備完了時刻は保存しません。
+- 画面を開いたまま保存先が切り替わった場合は `SyncGuard.reset()` で前モードの listener・timeout・待機callbackを破棄してから、新しいモードで `init()` し直してください。遅れて完了した旧世代の `storage.sync.get()` や整理処理を新モードのUIへ反映しないよう、各画面の世代番号も照合します。
+- `__task_sync_flushed_at__` の通知は各表示面で受信側デバウンスし、連続flushが静まってから1回だけ「同期しました」と表示します。キーを書き込む側の単調増加・成功時のみ更新という契約は変えません。
 
 ### 同時更新と保存
 

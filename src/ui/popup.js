@@ -7,6 +7,8 @@
   let renderTimer = null;
   let activeMutations = 0;
   let refreshAfterMutation = false;
+  let syncStatusTimer = null;
+  let modeGeneration = 0;
 
   document.getElementById("btn-settings").addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("src/ui/settings.html") });
@@ -26,6 +28,13 @@
     statusEl.classList.add("show");
     clearTimeout(statusTimer);
     statusTimer = setTimeout(() => statusEl.classList.remove("show"), 2000);
+  }
+  function scheduleSyncStatus() {
+    clearTimeout(syncStatusTimer);
+    syncStatusTimer = setTimeout(() => {
+      syncStatusTimer = null;
+      if (storageModeReady && storageMode === "sync") showStatus("同期しました");
+    }, 1800);
   }
   function createIcon(name, size, color) {
     return TaskLifecycle.createIcon(name, size, "lms-icon", color);
@@ -146,6 +155,47 @@
     renderTimer = setTimeout(() => void render(), 60);
   }
 
+  function startModeLifecycle(nextMode, readyAt, generation) {
+    if (generation !== modeGeneration) return;
+    SyncGuard.init(nextMode, readyAt);
+    LocalTaskStore.init(nextMode);
+    if (activeMutations > 0) refreshAfterMutation = true;
+    else void render();
+    SyncGuard.when(() => {
+      if (generation !== modeGeneration) return;
+      void LocalTaskStore.flush().then(() => {
+        if (generation === modeGeneration) scheduleRender();
+      });
+      void TaskLifecycle.cleanup(nextMode).then((cleanup) => {
+        if (generation !== modeGeneration) return;
+        if (cleanup.failed > 0) showStatus(cleanup.deleted + "件を削除しましたが、"
+          + cleanup.failed + "授業の整理に失敗しました");
+      }).catch((error) => {
+        if (generation === modeGeneration) {
+          showStatus("完了タスクを自動整理できませんでした: " + error.message);
+        }
+      });
+    });
+  }
+
+  function reinitializeMode(nextMode) {
+    const generation = ++modeGeneration;
+    storageMode = nextMode;
+    storageModeReady = true;
+    renderGeneration += 1;
+    clearTimeout(syncStatusTimer);
+    syncStatusTimer = null;
+    SyncGuard.reset();
+    chrome.storage.local.get([MODE_KEY, SyncGuard.READY_KEY], (result) => {
+      if (generation !== modeGeneration) return;
+      const storedMode = !chrome.runtime.lastError && result
+        ? TaskLifecycle.physicalStorageMode(result[MODE_KEY])
+        : nextMode;
+      if (storedMode !== nextMode) return;
+      startModeLifecycle(nextMode, result && result[SyncGuard.READY_KEY], generation);
+    });
+  }
+
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && changes["__drive_synced_at__"]
       && typeof changes["__drive_synced_at__"].newValue === "number") {
@@ -159,17 +209,16 @@
       && typeof changes["__google_tasks_synced_at__"].newValue === "number") showStatus("Google Tasksへ同期しました");
     if (areaName === "local" && storageModeReady && storageMode === "sync"
       && changes["__task_sync_flushed_at__"]
-      && typeof changes["__task_sync_flushed_at__"].newValue === "number") showStatus("同期しました");
+      && typeof changes["__task_sync_flushed_at__"].newValue === "number") scheduleSyncStatus();
     if (areaName === "local" && changes[MODE_KEY]) {
       const nextMode = TaskLifecycle.physicalStorageMode(changes[MODE_KEY].newValue);
       if (nextMode !== storageMode) {
-        // localで即時readyになったSyncGuardをsyncへ持ち越さないよう、
-        // 新しい実行コンテキストで初回同期確認からやり直す。
-        window.location.reload();
+        reinitializeMode(nextMode);
         return;
       }
     }
-    const changed = (areaName === storageMode && Object.keys(changes).some((key) => /^\d+$/.test(key)))
+    const watchedArea = storageMode === "sync" ? "sync" : "local";
+    const changed = (areaName === watchedArea && Object.keys(changes).some((key) => /^\d+$/.test(key)))
       || LocalTaskStore.isLocalChange(changes, areaName);
     if (!changed) return;
     if (activeMutations > 0) refreshAfterMutation = true;
@@ -183,15 +232,7 @@
     }
     storageMode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
     storageModeReady = true;
-    SyncGuard.init(storageMode, result[SyncGuard.READY_KEY]);
-    LocalTaskStore.init(storageMode);
-    void render();
-    SyncGuard.when(() => {
-      void LocalTaskStore.flush().then(() => render());
-      void TaskLifecycle.cleanup(storageMode).then((cleanup) => {
-        if (cleanup.failed > 0) showStatus(cleanup.deleted + "件を削除しましたが、"
-          + cleanup.failed + "授業の整理に失敗しました");
-      }).catch((error) => showStatus("完了タスクを自動整理できませんでした: " + error.message));
-    });
+    const generation = ++modeGeneration;
+    startModeLifecycle(storageMode, result[SyncGuard.READY_KEY], generation);
   });
 })();
