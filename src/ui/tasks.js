@@ -4,10 +4,6 @@
   const MODE_KEY = "__storage_mode__";
   const CATALOG_KEY = "__class_catalog__";
   const PARTIAL_CATALOG_KEY = "__class_catalog_home__";
-  const PENDING_ADDS_KEY = "__pending_task_adds__";
-  const PENDING_ADD_PREFIX = "__pending_task_add__:";
-  const PENDING_FLUSH_LOCK = "stalog-task-pending-flush";
-  const CLASS_LOCK_PREFIX = "stalog-task-class:";
   const UNKNOWN_YEAR = "unknown";
   const CATALOG_STALE_AFTER = 24 * 60 * 60 * 1000;
   const CATALOG_TAB_TIMEOUT = 20000;
@@ -44,7 +40,6 @@
   let catalog = emptyCatalog();
   let catalogByClassId = new Map();
   let entries = [];
-  let pendingAdds = [];
   let pendingStateUnknown = false;
   let editing = null;
   let editReturnFocus = null;
@@ -52,7 +47,6 @@
   let refreshTimer = null;
   let loadGeneration = 0;
   let refreshAfterBusy = false;
-  let flushAfterBusy = false;
   let catalogRefreshAttempted = false;
   let catalogTabId = null;
   let catalogTabBaseline = 0;
@@ -76,32 +70,6 @@
           return;
         }
         resolve(result || {});
-      });
-    });
-  }
-
-  function storageSet(area, items) {
-    return new Promise((resolve, reject) => {
-      area.set(items, () => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(new Error(error.message));
-          return;
-        }
-        resolve();
-      });
-    });
-  }
-
-  function storageRemove(area, keys) {
-    return new Promise((resolve, reject) => {
-      area.remove(keys, () => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(new Error(error.message));
-          return;
-        }
-        resolve();
       });
     });
   }
@@ -196,89 +164,6 @@
     return result;
   }
 
-  function normalizePendingAdds(value) {
-    if (!Array.isArray(value)) return [];
-    const ids = new Set();
-
-    return value.flatMap((item) => {
-      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
-      const id = typeof item.id === "string" ? item.id.trim() : "";
-      const classId = typeof item.classId === "string" || typeof item.classId === "number"
-        ? String(item.classId).trim()
-        : "";
-      const subject = typeof item.subject === "string" ? item.subject.trim() : "";
-      const text = typeof item.text === "string" ? item.text.trim() : "";
-      const year = typeof item.year === "string" && /^\d{4}$/.test(item.year)
-        ? item.year
-        : UNKNOWN_YEAR;
-      const createdAt = TaskLifecycle.normalizeTimestamp(item.createdAt);
-      if (!id || ids.has(id) || !/^\d+$/.test(classId) || !text) return [];
-      ids.add(id);
-      return [{ id, classId, subject, text, year, createdAt }];
-    });
-  }
-
-  function pendingAddsFromStorage(items) {
-    const dynamic = Object.entries(items || {})
-      .filter(([key]) => key.startsWith(PENDING_ADD_PREFIX))
-      .flatMap(([key, value]) => {
-        const normalized = normalizePendingAdds([value]);
-        if (normalized.length !== 1) return [];
-        return key === `${PENDING_ADD_PREFIX}${normalized[0].id}` ? normalized : [];
-      });
-    const legacy = Array.isArray(items?.[PENDING_ADDS_KEY]) ? items[PENDING_ADDS_KEY] : [];
-    return normalizePendingAdds([...dynamic, ...legacy]);
-  }
-
-  function withLock(name, callback) {
-    if (navigator.locks && typeof navigator.locks.request === "function") {
-      return navigator.locks.request(name, { mode: "exclusive" }, callback);
-    }
-    return callback();
-  }
-
-  async function getCurrentTaskStorage() {
-    const result = await storageGet(chrome.storage.local, [MODE_KEY]);
-    // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
-    const latestMode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
-    if (latestMode !== mode) {
-      mode = latestMode;
-      storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
-      watchedArea = mode;
-      loadGeneration += 1;
-    }
-    return storage;
-  }
-
-  async function readPendingAdds() {
-    const items = await storageGet(chrome.storage.local, null);
-    const result = pendingAddsFromStorage(items);
-    pendingStateUnknown = false;
-    return result;
-  }
-
-  async function removePendingAddIds(ids) {
-    const idSet = new Set(ids);
-    const result = await storageGet(chrome.storage.local, [PENDING_ADDS_KEY]);
-    const legacyNext = normalizePendingAdds(result[PENDING_ADDS_KEY])
-      .filter((entry) => !idSet.has(entry.id));
-    if (legacyNext.length > 0) {
-      await storageSet(chrome.storage.local, { [PENDING_ADDS_KEY]: legacyNext });
-    } else {
-      await storageRemove(chrome.storage.local, [PENDING_ADDS_KEY]);
-    }
-    await storageRemove(
-      chrome.storage.local,
-      ids.map((id) => `${PENDING_ADD_PREFIX}${id}`)
-    );
-    try {
-      pendingAdds = await readPendingAdds();
-    } catch (error) {
-      pendingStateUnknown = true;
-      pendingAdds = pendingAdds.filter((entry) => !idSet.has(entry.id));
-    }
-  }
-
   function yearKeys() {
     return Object.keys(catalog.years).sort((a, b) => Number(b) - Number(a));
   }
@@ -362,12 +247,6 @@
 
   function finishBusy() {
     setBusy(false);
-    if (flushAfterBusy && ready) {
-      flushAfterBusy = false;
-      refreshAfterBusy = false;
-      void flushPendingAdds();
-      return;
-    }
     if (refreshAfterBusy) {
       refreshAfterBusy = false;
       scheduleRefresh();
@@ -490,102 +369,22 @@
     return terms.every((term) => haystack.includes(term));
   }
 
-  function visiblePendingAdds() {
-    const storedIds = new Set();
-    entries.forEach((entry) => {
-      entry.tasks.forEach((task) => storedIds.add(`${entry.classId}\u0000${task.id}`));
-    });
-    return pendingAdds.filter((item) => !storedIds.has(`${item.classId}\u0000${item.id}`));
-  }
-
-  function renderPendingSection(items) {
-    const group = document.createElement("section");
-    group.className = "year-group pending-group";
-
-    const heading = document.createElement("h3");
-    heading.className = "year-heading";
-    const badge = document.createElement("span");
-    badge.className = "year-badge pending-badge";
-    badge.textContent = "同期確認待ち";
-    const count = document.createElement("span");
-    count.textContent = `${items.length}件`;
-    heading.append(badge, count);
-
-    const byClass = new Map();
-    items.forEach((item) => {
-      if (!byClass.has(item.classId)) byClass.set(item.classId, []);
-      byClass.get(item.classId).push(item);
-    });
-
-    const classList = document.createElement("div");
-    classList.className = "class-list";
-    [...byClass.entries()]
-      .sort(([, a], [, b]) => {
-        const aName = a[0].subject || catalogByClassId.get(a[0].classId)?.subject || "";
-        const bName = b[0].subject || catalogByClassId.get(b[0].classId)?.subject || "";
-        return aName.localeCompare(bName, "ja");
-      })
-      .forEach(([classId, tasks]) => {
-        const classInfo = catalogByClassId.get(classId);
-        const card = document.createElement("article");
-        card.className = "class-card pending-card";
-        const cardHeading = document.createElement("div");
-        cardHeading.className = "class-heading";
-        const name = document.createElement("span");
-        name.className = "class-name";
-        name.textContent = tasks[0].subject || classInfo?.subject || `授業（${classId}）`;
-        const state = document.createElement("span");
-        state.className = "task-count";
-        state.textContent = "同期後に保存";
-        cardHeading.append(name, state);
-
-        const list = document.createElement("ul");
-        list.className = "task-list";
-        tasks.forEach((task) => {
-          const item = document.createElement("li");
-          item.className = "task-item pending-task";
-          const marker = document.createElement("span");
-          marker.className = "pending-marker";
-          marker.textContent = "…";
-          marker.setAttribute("aria-hidden", "true");
-          const taskMain = createTaskMain(task);
-          const note = document.createElement("span");
-          note.className = "pending-note";
-          note.textContent = "端末に保留済み";
-          item.append(marker, taskMain, note);
-          list.appendChild(item);
-        });
-        card.append(cardHeading, list);
-        classList.appendChild(card);
-      });
-
-    group.append(heading, classList);
-    taskGroups.appendChild(group);
-  }
-
   function renderTasks() {
-    const allPending = visiblePendingAdds();
-    const storedTotal = entries.reduce((sum, entry) => sum + entry.tasks.length, 0);
-    const total = storedTotal + allPending.length;
-    const incomplete = allPending.length + entries.reduce(
+    const total = entries.reduce((sum, entry) => sum + entry.tasks.length, 0);
+    const incomplete = entries.reduce(
       (sum, entry) => sum + entry.tasks.filter((task) => !task.done).length,
       0
     );
     const terms = taskSearchTerms();
     const activeFilter = hasActiveTaskFilter();
-    const pending = allPending.filter((item) => {
-      const subject = item.subject || catalogByClassId.get(item.classId)?.subject || "";
-      return matchesTaskFilter(subject, item, terms);
-    });
     const visibleEntries = entries
       .map((entry) => ({
         ...entry,
         tasks: entry.tasks.filter((task) => matchesTaskFilter(entry.subject, task, terms))
       }))
       .filter((entry) => entry.tasks.length > 0);
-    const visibleStoredTotal = visibleEntries.reduce((sum, entry) => sum + entry.tasks.length, 0);
-    const visibleTotal = visibleStoredTotal + pending.length;
-    const visibleIncomplete = pending.length + visibleEntries.reduce(
+    const visibleTotal = visibleEntries.reduce((sum, entry) => sum + entry.tasks.length, 0);
+    const visibleIncomplete = visibleEntries.reduce(
       (sum, entry) => sum + entry.tasks.filter((task) => !task.done).length,
       0
     );
@@ -599,8 +398,6 @@
     }
     clearTaskSearchButton.disabled = !ready || !activeFilter;
     taskGroups.replaceChildren();
-
-    if (pending.length > 0) renderPendingSection(pending);
 
     if (total === 0) {
       if (!ready) return;
@@ -715,7 +512,6 @@
       fullCatalog = normalizeCatalog(localItems[CATALOG_KEY]);
       partialCatalog = normalizeCatalog(localItems[PARTIAL_CATALOG_KEY]);
       catalog = combineCatalogs(fullCatalog, partialCatalog);
-      pendingAdds = [];
       pendingStateUnknown = false;
       rebuildCatalogIndex();
       entries = readTaskEntries(taskItems);
@@ -773,102 +569,6 @@
       if (saved && refreshed) showStatus(mode === "sync" ? "端末に保存しました（確認後に同期）" : "保存しました", false);
     }
     return saved;
-  }
-
-  async function flushPendingAdds() {
-    if (!ready) return false;
-    if (busy) {
-      flushAfterBusy = true;
-      return false;
-    }
-
-    setBusy(true);
-    let completed = false;
-    let snapshot = [];
-    try {
-      return await withLock(PENDING_FLUSH_LOCK, () =>
-        TaskMutationLock.request(async () => {
-          const mutationStorage = await getCurrentTaskStorage();
-          snapshot = await readPendingAdds();
-          pendingAdds = snapshot;
-          renderTasks();
-
-          if (snapshot.length === 0) {
-            completed = true;
-            await loadAll({ silent: true, preserveYear: true });
-            return true;
-          }
-
-          const byClass = new Map();
-          snapshot.forEach((item) => {
-            if (!byClass.has(item.classId)) byClass.set(item.classId, []);
-            byClass.get(item.classId).push(item);
-          });
-
-          let flushedCount = 0;
-          let failedClasses = 0;
-          for (const [classId, additions] of byClass) {
-            try {
-              await withLock(`${CLASS_LOCK_PREFIX}${classId}`, async () => {
-                const result = await storageGet(mutationStorage, [classId]);
-                const latest = normalizeEntry(result[classId], classId);
-                additions.forEach((item) => {
-                  const existingIndex = latest.tasks.findIndex((task) => task.id === item.id);
-                  const createdAt = TaskLifecycle.normalizeTimestamp(item.createdAt);
-                  if (existingIndex >= 0) {
-                    // 旧版で「本体保存成功・保留削除失敗」になった場合、保留側にだけ
-                    // 残っている正確な追加日時を復旧してから保留キーを削除する。
-                    if (!TaskLifecycle.normalizeTimestamp(latest.tasks[existingIndex].createdAt) && createdAt) {
-                      latest.tasks[existingIndex] = { ...latest.tasks[existingIndex], createdAt };
-                    }
-                    return;
-                  }
-                  const task = { id: item.id, text: item.text, done: false };
-                  if (createdAt) task.createdAt = createdAt;
-                  latest.tasks.push(task);
-                });
-                const subject = latest.subject || additions[0].subject || "";
-                await storageSet(mutationStorage, { [classId]: { subject, tasks: latest.tasks } });
-              });
-              await removePendingAddIds(additions.map((item) => item.id));
-              flushedCount += additions.length;
-            } catch (error) {
-              // 1授業の反映失敗で他授業の保留分まで止めない。失敗分はキューへ残し、次回また試す。
-              failedClasses += 1;
-              console.warn(`授業${classId}の保留タスクを反映できませんでした`, error);
-            }
-          }
-
-          completed = failedClasses === 0;
-          await loadAll({ silent: true, preserveYear: true });
-          if (flushedCount > 0) {
-            showStatus(
-              failedClasses === 0
-                ? `${flushedCount}件のタスクを同期データへ保存しました`
-                : `${flushedCount}件を保存しました（一部は失敗したため保留のままです）`,
-              failedClasses > 0
-            );
-          }
-          return completed;
-        })
-      );
-    } catch (error) {
-      try {
-        pendingAdds = await readPendingAdds();
-      } catch (readError) {
-        pendingStateUnknown = true;
-      }
-      renderTasks();
-      showStatus(
-        makeError("保留中のタスクを保存できませんでした。次回もう一度試します", error).message,
-        true,
-        true
-      );
-      return false;
-    } finally {
-      if (completed && pendingAdds.length > 0) flushAfterBusy = true;
-      finishBusy();
-    }
   }
 
   function selectedClass() {
@@ -1145,12 +845,11 @@
       // 未設定は sync。明示的な "local" / "drive" だけが chrome.storage.local
       mode = TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
       storageModeReady = true;
-      storage = mode === "local" ? chrome.storage.local : chrome.storage.sync;
-      watchedArea = mode;
+      storage = mode === "sync" ? chrome.storage.sync : chrome.storage.local;
+      watchedArea = mode === "sync" ? "sync" : "local";
       fullCatalog = normalizeCatalog(result[CATALOG_KEY]);
       partialCatalog = normalizeCatalog(result[PARTIAL_CATALOG_KEY]);
       catalog = combineCatalogs(fullCatalog, partialCatalog);
-      pendingAdds = [];
       pendingStateUnknown = false;
       rebuildCatalogIndex();
       renderCatalogControls(false);

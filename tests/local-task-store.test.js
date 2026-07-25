@@ -152,5 +152,14 @@ const settle = async (turns = 12) => { for (let i = 0; i < turns; i += 1) await 
     "通知印の保存失敗でもsync反映は成功する");
   assert.equal(local._data.__task_pending_ops__, undefined,
     "通知印の保存失敗だけで反映済み操作をoutboxへ戻さない");
+
+  await new Promise((resolve) => local.set({
+    __storage_mode__: "drive",
+    "200": { subject: "ドライブ授業",
+      tasks: [{ id: "drive-task", text: "ローカル実体", done: false }] }
+  }, resolve));
+  const driveVisible = await store.readClass("200");
+  assert.deepEqual(driveVisible.tasks.map((task) => task.id), ["drive-task"],
+    "driveモードでは物理保存先のlocalから読み込む");
   console.log("local first task store test passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

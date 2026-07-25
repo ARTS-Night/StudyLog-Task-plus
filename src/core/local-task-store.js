@@ -158,7 +158,7 @@ const LocalTaskStore = (() => {
     return TaskLifecycle.physicalStorageMode(result[MODE_KEY]);
   }
   async function readAll() {
-    if (await currentMode() === "local") {
+    if (await currentMode() !== "sync") {
       const items = await get(chrome.storage.local, null);
       const result = {};
       Object.entries(items).forEach(([key, value]) => {
@@ -314,6 +314,5 @@ const LocalTaskStore = (() => {
         console.warn("授業" + classId + "のローカルミラーを更新できませんでした", error));
     });
   });
-  return Object.freeze({ MIRROR_PREFIX, PENDING_OPS_KEY, init, readAll, readClass,
-    mutate, flush, isLocalChange, applyOperation });
+  return Object.freeze({ init, readAll, readClass, mutate, flush, isLocalChange });
 })();

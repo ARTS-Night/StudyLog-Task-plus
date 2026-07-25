@@ -109,7 +109,6 @@
 
   globalThis.GoogleAuth = Object.freeze({
     getToken,
-    forgetToken,
     authFetch,
     login,
     logout,
