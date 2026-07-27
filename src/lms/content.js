@@ -37,7 +37,11 @@
     if (!window.top || window.top === window) {
       SyncGuard.when(() => {
         if (generation !== modeGeneration) return;
-        void LocalTaskStore.flush();
+        void LocalTaskStore.flush().catch((error) => {
+          if (generation === modeGeneration) {
+            showToast("同期処理を完了できませんでした: " + error.message);
+          }
+        });
         void TaskLifecycle.cleanup(mode)
           .then((result) => {
             if (generation !== modeGeneration) return;

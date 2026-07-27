@@ -80,6 +80,24 @@ assert.doesNotMatch(
     `${scriptFile} はsync完了通知を受信側でデバウンスする`);
 });
 
+["src/lms/content.js", "src/ui/popup.js"].forEach((scriptFile) => {
+  const source = fs.readFileSync(path.join(__dirname, "..", scriptFile), "utf8");
+  assert.match(source,
+    /LocalTaskStore\.flush\(\)[\s\S]*?\.catch\(\(error\)[\s\S]*?同期処理を完了できませんでした/,
+    `${scriptFile} はflush失敗を利用者へ通知する`);
+});
+
+const settingsSource = fs.readFileSync(path.join(__dirname, "..", "src", "ui", "settings.js"), "utf8");
+assert.match(settingsSource,
+  /const revertRadios = \(\) => \{[\s\S]*?r\.disabled = false;/,
+  "保存先切替の失敗・中止時はradioを再有効化する");
+assert.match(settingsSource,
+  /confirm\([\s\S]*?modeRadios\.forEach\(\(r\) => \{ r\.disabled = true; \}\);/,
+  "保存先切替の確認後、非同期処理の開始前にradioを無効化する");
+assert.match(settingsSource,
+  /mode = newMode;[\s\S]*?modeRadios\.forEach\(\(r\) => \{ r\.disabled = false; \}\);/,
+  "保存先切替の成功時はradioを再有効化する");
+
 const catalogEntries = scripts.filter((entry) =>
   entry.matches.includes(lmsMatch) && entry.js && entry.js.includes("src/lms/class-catalog.js")
 );

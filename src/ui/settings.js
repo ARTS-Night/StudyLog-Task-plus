@@ -663,13 +663,17 @@
     radio.addEventListener("change", () => {
       const newMode = radio.value;
       if (newMode === mode) return;
+      const revertRadios = () => {
+        modeRadios.forEach((r) => {
+          r.checked = r.value === mode;
+          r.disabled = false;
+        });
+      };
 
       // 切り替えはどちら向きでも同期領域の読み書きを伴うため、初回同期の確認を待つ
       // （確認前に切り替えると、空の同期データを正としてコピー・削除してしまう）
       if (syncBlocked()) {
-        modeRadios.forEach((r) => {
-          r.checked = r.value === mode;
-        });
+        revertRadios();
         return;
       }
 
@@ -677,22 +681,15 @@
       // 挟んだ後に confirm() を呼ぶと、このタブが最前面でないため Chrome に抑制される
       const label = modeLabel(newMode);
       if (!confirm(`保存先を「${label}」に切り替えます。\n現在のタスクは新しい保存先へコピーされ、新しい保存先に残っている古いタスクは現在の内容で置き換えられます。よろしいですか？`)) {
-        modeRadios.forEach((r) => {
-          r.checked = r.value === mode;
-        });
+        revertRadios();
         return;
       }
+      modeRadios.forEach((r) => { r.disabled = true; });
 
       const startSwitch = () => {
       const source = currentArea();
       // "drive" モードの実体も chrome.storage.local（Googleドライブへの反映はバックグラウンドが行う）
       const target = newMode === "sync" ? chrome.storage.sync : chrome.storage.local;
-
-      const revertRadios = () => {
-        modeRadios.forEach((r) => {
-          r.checked = r.value === mode;
-        });
-      };
 
       runMutationExclusive((releaseMutation) => {
         chrome.storage.local.get(null, (localItems) => {
@@ -753,6 +750,7 @@
               }
               mode = newMode;
               changingModeTo = null;
+              modeRadios.forEach((r) => { r.disabled = false; });
               updateSyncGuide();
               refreshUsage();
               showStatus(`保存先を「${label}」に切り替えました`);
@@ -814,10 +812,11 @@
             })
             .catch((error) => {
               showStatus(`Googleドライブ共有にはログインが必要です: ${error.message}`);
-              modeRadios.forEach((r) => {
-                r.checked = r.value === mode;
-              });
+              revertRadios();
             });
+        }).catch((error) => {
+          showStatus(`Googleドライブ共有にはログインが必要です: ${error.message}`);
+          revertRadios();
         });
         return;
       }

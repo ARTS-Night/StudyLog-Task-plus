@@ -165,6 +165,10 @@
       if (generation !== modeGeneration) return;
       void LocalTaskStore.flush().then(() => {
         if (generation === modeGeneration) scheduleRender();
+      }).catch((error) => {
+        if (generation === modeGeneration) {
+          showStatus("同期処理を完了できませんでした: " + error.message);
+        }
       });
       void TaskLifecycle.cleanup(nextMode).then((cleanup) => {
         if (generation !== modeGeneration) return;
