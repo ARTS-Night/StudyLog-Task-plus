@@ -394,7 +394,7 @@
       }
 
       .lms-task-subject {
-        color: #52616b;
+        color: #37474f;
         font-size: 12px;
         font-weight: 700;
       }
@@ -417,6 +417,12 @@
         color: #fff;
         background: #1e88e5;
         border-color: #1e88e5;
+      }
+
+      /* 完了タブが選ばれている間は、カレンダーの「全完了」ボタンと同じ緑にする */
+      #${HOME_WIDGET_ID} .lms-home-task-tab-done.active {
+        background: #43a047;
+        border-color: #43a047;
       }
 
       #${HOME_WIDGET_ID} .lms-task-list {
@@ -795,7 +801,8 @@
     function createTab(label, done) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `lms-home-task-tab${done ? "" : " active"}`;
+      // 完了タブは既存の完了色(緑)と揃えるため、活性時だけ別クラスで配色を切り替える。
+      button.className = `lms-home-task-tab${done ? " lms-home-task-tab-done" : ""}${done ? "" : " active"}`;
       button.textContent = label;
       button.addEventListener("click", () => {
         showDone = done;
