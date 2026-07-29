@@ -106,7 +106,7 @@ jobs:
           DATE=$(date +'%Y%m%d')
           VERSION=${GITHUB_SHA:0:7}
           TARGETS="src image README.md manifest.json" # まとめたいフォルダやファイル
-          ZIP_NAME="archive_${DATE}_${VERSION}.zip"
+          ZIP_NAME="StudyLog-Task-plus_archive_${DATE}_${VERSION}.zip"
 
           zip -r9 "$ZIP_NAME" $TARGETS
           # 後続の Python スクリプトにファイル名を渡すため環境変数にセット
