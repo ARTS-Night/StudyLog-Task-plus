@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqjreqBjTAkeJ92nT4qcabyzO5Z8nmMDA0G5Xibi6LvzaYsjnsUBvRiWVllqQS2HEpvaZ2XXD+BlJi6I1Ryhy+qP/TVlJdnqEqoXhaSPqDeypiqCmzqnu5GZ8imxbinRgTdfFmb4V66giQWWnUPWodE7dqIiqadBTWx2w/lxTYey/6n5WeAfCP97aU/aHEuhX09kkIyTRAn4bVqSEmHfyRb1MUdAkgAZEi02tgV/a1CijRfiQ0Eyu+VU+KZb0Bgl2siQmUe0MydUVTwh70peAh1hb6biaWqLE1lFbd4ufj9VlfK/kiAKRTpuRljSQK3RSQYVltQspOypBiUcE0PYrgwIDAQAB",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA9Vjy2gdi/4y8pV/gKFOaS36eg1l4gnBDOon1AQKVOW/3XkS2xSFbsRh9XoJ3RM9HZ2oIxPa5hHqBC7Q65FntA6BHn1CoalOroPrgxF4VNd7U8pnuY4nTQQ4dz1y4DbAtiCfgmkb09nuoRFpPWKNAD7+l9+R9wlvf0jpmRq87Yez2oAwVd5kH8Iakf70+Es73n2UNJCGZe3FzaOXCc6fG6hNHbT3Acx/o7JPDgajcpSGLkYmX+n0uHDooJUAGxF8XGLLsRuXhDzn5uGLuS/PGRpxrW1fnUJRqSKHzTxUoihLo2obtL2gFCOEY3UqClqvmQLEin/Cc0DEmCFvHejZmYwIDAQAB",
   "name": "スタログ授業メモ",
   "version": "0.1.0",
   "version_name": "0.1.0 beta",
@@ -11,7 +11,7 @@
     "alarms"
   ],
   "oauth2": {
-    "client_id": "279232239122-n0o7j668rhsp7lhir90016h51qi58jfi.apps.googleusercontent.com",
+    "client_id": "279232239122-maj8ovasoptlgevm9q7o3f7rs3m8f6q5.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/tasks",

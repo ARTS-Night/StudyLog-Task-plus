@@ -68,7 +68,7 @@ Tree Ivy Replanted を併用している場合も、右サイドで開いた授�
 
 ## データの保存場所
 
-拡張機能IDは `manifest.json` の `key` により **`pcjeocjjlggpfijlglmlgdiiaimooikd`** に固定されています（同期を機能させるための固定値。`key` を消したり変えたりすると同期できなくなるので注意）。
+拡張機能IDは `manifest.json` の `key` により **`nkdapcjaljmbeiphaakejiahmoabjfnm`** に固定されています（同期を機能させるための固定値。`key` を消したり変えたりすると同期できなくなるので注意）。
 
 | データ | 保存API | 実体 |
 | --- | --- | --- |
@@ -85,8 +85,8 @@ Tree Ivy Replanted を併用している場合も、右サイドで開いた授�
 
 | OS | sync領域 | local領域 |
 | --- | --- | --- |
-| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Sync Extension Settings\pcjeocjjlggpfijlglmlgdiiaimooikd\` | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Local Extension Settings\pcjeocjjlggpfijlglmlgdiiaimooikd\` |
-| macOS | `~/Library/Application Support/Google/Chrome/Default/Sync Extension Settings/pcjeocjjlggpfijlglmlgdiiaimooikd/` | `~/Library/Application Support/Google/Chrome/Default/Local Extension Settings/pcjeocjjlggpfijlglmlgdiiaimooikd/` |
+| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Sync Extension Settings\nkdapcjaljmbeiphaakejiahmoabjfnm\` | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Local Extension Settings\nkdapcjaljmbeiphaakejiahmoabjfnm\` |
+| macOS | `~/Library/Application Support/Google/Chrome/Default/Sync Extension Settings/nkdapcjaljmbeiphaakejiahmoabjfnm/` | `~/Library/Application Support/Google/Chrome/Default/Local Extension Settings/nkdapcjaljmbeiphaakejiahmoabjfnm/` |
 
 いずれもLevelDB形式でテキストエディタでは読めません。中身を見たい場合は、設定ページで開発者ツール（`F12` または macOSは `Cmd+Option+I`）のConsoleに以下を貼り付けてください。
 
@@ -101,7 +101,7 @@ chrome.storage.local.get(null, (d) => console.log(JSON.stringify(d, null, 2)))  
 
 `chrome.storage.sync` が他のパソコンと同期されるには、**すべて**の条件を満たす必要があります。
 
-1. 両方のPCで拡張機能IDが同じであること（`chrome://extensions/` で `pcjeocjjlggpfijlglmlgdiiaimooikd` になっているか確認）。
+1. 両方のPCで拡張機能IDが同じであること（`chrome://extensions/` で `nkdapcjaljmbeiphaakejiahmoabjfnm` になっているか確認）。
 2. 両方のPCで同じGoogleアカウントでChromeにログインし、同期がオンであること（`chrome://settings/syncSetup`）。
 3. 「同期する内容の管理」で「すべてを同期する」または少なくとも「拡張機能」がオンであること。
 4. この拡張機能の設定ページで保存先が「Google アカウントで同期」になっていること（両方のPCで確認）。
