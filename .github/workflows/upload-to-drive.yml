@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - 公開用
   workflow_dispatch:
 
 jobs:
@@ -32,6 +33,11 @@ jobs:
             echo "proposal_changed=true" >> "$GITHUB_OUTPUT"
             echo "research_changed=true" >> "$GITHUB_OUTPUT"
             echo "should_run=true" >> "$GITHUB_OUTPUT"
+            if [ "${{ github.ref_name }}" = "公開用" ]; then
+              echo "is_production=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_production=false" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
 
@@ -76,12 +82,19 @@ jobs:
             should_run=true
           fi
 
+          if [ "${{ github.ref_name }}" = "公開用" ]; then
+            is_production=true
+          else
+            is_production=false
+          fi
+
           {
             echo "zip_changed=$zip_changed"
             echo "readme_changed=$readme_changed"
             echo "proposal_changed=$proposal_changed"
             echo "research_changed=$research_changed"
             echo "should_run=$should_run"
+            echo "is_production=$is_production"
           } >> "$GITHUB_OUTPUT"
 
       # 3. Python 環境のセットアップ（アップロード対象が無ければスキップ）
@@ -108,6 +121,12 @@ jobs:
           TARGETS="src image README.md manifest.json" # まとめたいフォルダやファイル
           ZIP_NAME="StudyLog-Task-plus_archive_${DATE}_${VERSION}.zip"
 
+          if [ "${{ steps.changes.outputs.is_production }}" = "true" ]; then
+            echo "公開用ブランチのため、manifest.json から key を除去して ZIP に含めます"
+            jq 'del(.key)' manifest.json > manifest.json.tmp
+            mv manifest.json.tmp manifest.json
+          fi
+
           zip -r9 "$ZIP_NAME" $TARGETS
           # 後続の Python スクリプトにファイル名を渡すため環境変数にセット
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
@@ -123,7 +142,8 @@ jobs:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
-          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          GDRIVE_FOLDER_ID: ${{ steps.changes.outputs.is_production == 'true' && '1loQ3jrigLS52Mn0HJYPBobUV5kpjalRc' || secrets.GDRIVE_FOLDER_ID }}
+          IS_PRODUCTION: ${{ steps.changes.outputs.is_production }}
           ZIP_CHANGED: ${{ steps.changes.outputs.zip_changed }}
           README_CHANGED: ${{ steps.changes.outputs.readme_changed }}
           PROPOSAL_CHANGED: ${{ steps.changes.outputs.proposal_changed }}
@@ -153,6 +173,7 @@ jobs:
           folder_id = required_env('GDRIVE_FOLDER_ID')
           zip_changed = os.environ.get('ZIP_CHANGED', 'false') == 'true'
           zip_file_name = os.environ.get('ZIP_NAME', '').strip()
+          is_production = os.environ.get('IS_PRODUCTION', 'false') == 'true'
 
           # ★直接配置＆上書きしたいマークダウンファイル群と、今回変更されたかどうかのフラグ
           # （ここを自由に増やせます。増やす場合は workflow 側の変更判定にも対応するcaseを追加してください）
@@ -220,6 +241,10 @@ jobs:
           # ----------------------------------------------------
           # 処理 B: Markdown ファイルの個別アップロード（今回変更があったものだけ、既存があれば上書き）
           # ----------------------------------------------------
+          if is_production:
+              print("公開用ブランチのため、Markdown個別アップロードはスキップします。")
+              sys.exit(0)
+
           print("=== Uploading / Updating Markdown Files ===")
           for file_path in MD_FILES:
               if not MD_CHANGED.get(file_path, False):
