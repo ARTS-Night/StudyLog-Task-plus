@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA9Vjy2gdi/4y8pV/gKFOaS36eg1l4gnBDOon1AQKVOW/3XkS2xSFbsRh9XoJ3RM9HZ2oIxPa5hHqBC7Q65FntA6BHn1CoalOroPrgxF4VNd7U8pnuY4nTQQ4dz1y4DbAtiCfgmkb09nuoRFpPWKNAD7+l9+R9wlvf0jpmRq87Yez2oAwVd5kH8Iakf70+Es73n2UNJCGZe3FzaOXCc6fG6hNHbT3Acx/o7JPDgajcpSGLkYmX+n0uHDooJUAGxF8XGLLsRuXhDzn5uGLuS/PGRpxrW1fnUJRqSKHzTxUoihLo2obtL2gFCOEY3UqClqvmQLEin/Cc0DEmCFvHejZmYwIDAQAB",
   "name": "スタログ授業メモ",
-  "version": "0.1.0",
-  "version_name": "0.1.0 beta",
+  "version": "0.1.1",
+  "version_name": "0.1.1 beta",
   "description": "スタログの授業ごとにタスクを保存し、年度別の専用画面で管理します。",
   "permissions": [
     "storage",
