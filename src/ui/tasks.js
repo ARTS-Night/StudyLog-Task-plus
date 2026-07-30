@@ -745,6 +745,30 @@
       return;
     }
 
+    // host_permissions によりタブを開かずに直接取得できる場合はそれを優先し、
+    // 失敗した場合だけ従来の背景タブ方式へフォールバックする。
+    if (typeof ClassCatalog !== "undefined" && typeof ClassCatalog.refreshFromMyPage === "function") {
+      ClassCatalog.refreshFromMyPage(true)
+        .then(() => {
+          if (!ready) {
+            showSyncStatus();
+          } else {
+            showStatus("授業一覧を更新しました", false);
+          }
+        })
+        .catch((error) => {
+          console.warn("[スタログ授業タスク] 内部取得に失敗したため背景タブへ切り替えます", error);
+          openCatalogPageViaTab();
+        });
+      return;
+    }
+
+    openCatalogPageViaTab();
+  }
+
+  function openCatalogPageViaTab() {
+    if (catalogTabId !== null) return;
+
     catalogTabBaseline = catalog.fullUpdatedAt || 0;
     chrome.tabs.create({
       url: "https://portal.iwasaki.ac.jp/portal/lmsinc/sMyPage.php",

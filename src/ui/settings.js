@@ -1134,4 +1134,34 @@
       });
     }, true);
   });
+
+  // ---- 高度な設定: マイページの種類（学生用/教員用） ----
+  const TEACHER_MODE_KEY = "__teacher_mode__";
+  const teacherModeCheckbox = document.getElementById("teacher-mode-checkbox");
+  if (teacherModeCheckbox) {
+    chrome.storage.local.get([TEACHER_MODE_KEY], (result) => {
+      if (chrome.runtime.lastError) return;
+      teacherModeCheckbox.checked = result[TEACHER_MODE_KEY] === true;
+    });
+    teacherModeCheckbox.addEventListener("change", () => {
+      const value = teacherModeCheckbox.checked;
+      teacherModeCheckbox.disabled = true;
+      chrome.storage.local.set({ [TEACHER_MODE_KEY]: value }, () => {
+        teacherModeCheckbox.disabled = false;
+        if (chrome.runtime.lastError) {
+          teacherModeCheckbox.checked = !value;
+          showStatus(`設定の保存に失敗しました: ${chrome.runtime.lastError.message}`);
+          return;
+        }
+        showStatus(value
+          ? "教員用マイページ（tMyPage.php）から取得するようにしました"
+          : "学生用マイページ（sMyPage.php）から取得するようにしました");
+      });
+    });
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "local" && changes[TEACHER_MODE_KEY] && !teacherModeCheckbox.disabled) {
+        teacherModeCheckbox.checked = changes[TEACHER_MODE_KEY].newValue === true;
+      }
+    });
+  }
 })();
