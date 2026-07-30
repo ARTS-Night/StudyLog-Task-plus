@@ -10,6 +10,9 @@
     "identity",
     "alarms"
   ],
+  "host_permissions": [
+    "https://portal.iwasaki.ac.jp/*"
+  ],
   "oauth2": {
     "client_id": "279232239122-maj8ovasoptlgevm9q7o3f7rs3m8f6q5.apps.googleusercontent.com",
     "scopes": [
@@ -66,7 +69,8 @@
     },
     {
       "matches": [
-        "https://portal.iwasaki.ac.jp/portal/lmsinc/sMyPage.php*"
+        "https://portal.iwasaki.ac.jp/portal/lmsinc/sMyPage.php*",
+        "https://portal.iwasaki.ac.jp/portal/lmsinc/tMyPage.php*"
       ],
       "js": [
         "src/lms/class-catalog.js"

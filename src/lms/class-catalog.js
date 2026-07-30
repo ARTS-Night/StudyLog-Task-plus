@@ -2,10 +2,35 @@
   const CATALOG_KEY = "__class_catalog__";
   const PARTIAL_CATALOG_KEY = "__class_catalog_home__";
   const CATALOG_ATTEMPT_KEY = "__class_catalog_attempt__";
+  const TEACHER_MODE_KEY = "__teacher_mode__";
   const REFRESH_INTERVAL = 24 * 60 * 60 * 1000;
   const RETRY_INTERVAL = 10 * 60 * 1000;
-  const MY_PAGE_PATH = "/portal/lmsinc/sMyPage.php";
+  // マイページのパスは学生用(s)と教員用(t)でファイル名の先頭だけが異なる。
+  const STUDENT_MY_PAGE_PATH = "/portal/lmsinc/sMyPage.php";
+  const TEACHER_MY_PAGE_PATH = "/portal/lmsinc/tMyPage.php";
   const PARTIAL_CATALOG_LOCK = "stalog-class-catalog-home";
+
+  function isMyPagePath(pathname) {
+    return pathname === STUDENT_MY_PAGE_PATH || pathname === TEACHER_MY_PAGE_PATH;
+  }
+
+  function getTeacherMode() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([TEACHER_MODE_KEY], (result) => {
+        // 読み込み失敗時は既定の学生用として扱う（安全側）
+        resolve(!chrome.runtime.lastError && result && result[TEACHER_MODE_KEY] === true);
+      });
+    });
+  }
+
+  function setTeacherMode(value) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [TEACHER_MODE_KEY]: value === true }, () => {
+        void chrome.runtime.lastError;
+        resolve();
+      });
+    });
+  }
 
   function academicYear(date = new Date()) {
     return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
@@ -294,8 +319,12 @@
 
     await setLastAttempt(now);
 
-    const response = await fetch(MY_PAGE_PATH, {
-      credentials: "same-origin",
+    const teacherMode = await getTeacherMode();
+    const myPagePath = teacherMode ? TEACHER_MY_PAGE_PATH : STUDENT_MY_PAGE_PATH;
+    // 拡張機能ページ（tasks.html等）からの取得は別オリジンになるため、host_permissions
+    // による同一オリジン相当のクッキー送信を受けられる "include" を使う。
+    const response = await fetch(`https://portal.iwasaki.ac.jp${myPagePath}`, {
+      credentials: "include",
       cache: "no-store"
     });
     if (!response.ok) {
@@ -311,7 +340,9 @@
 
   async function initialize() {
     try {
-      if (location.pathname === MY_PAGE_PATH) {
+      if (isMyPagePath(location.pathname)) {
+        // 実際に開いたマイページの種類（学生用/教員用）を今後の背景取得にも使う。
+        await setTeacherMode(location.pathname === TEACHER_MY_PAGE_PATH);
         const parsed = await parseMyPageWhenReady(document);
         const fullUpdatedAt = await replaceWithMyPageCatalog(parsed, { source: "mypage-dom" });
         notifyMyPageSaved(fullUpdatedAt);
@@ -335,5 +366,12 @@
     return true;
   });
 
-  initialize();
+  // src/ui/tasks.js など拡張機能ページからも、タブを開かずに直接呼び出せるように公開する。
+  globalThis.ClassCatalog = Object.freeze({ refreshFromMyPage });
+
+  // content script として実サイト上で動く時だけ自動実行する。拡張機能ページに
+  // 読み込まれた場合は、呼び出し側が ClassCatalog.refreshFromMyPage() を明示的に呼ぶ。
+  if (location.origin === "https://portal.iwasaki.ac.jp") {
+    initialize();
+  }
 })();

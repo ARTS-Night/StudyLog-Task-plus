@@ -44,7 +44,7 @@
 | `src/sync/google-tasks/google-tasks-sync.js` | Google Tasksのタスクリスト検索・作成とタスク追加・更新・削除を行う状態なしのAPIモジュール |
 | `src/sync/google-tasks/google-tasks-mirror-background.js` | 保存先モードに依存せず、永続outboxを介してスタログのタスク変更をGoogle Tasksへ一方向に逐次送信・再試行するService Worker側エンジン |
 | `src/core/task-lifecycle.js` | 追加・完了日時の正規化、完了状態変更、期限切れタスクの自動整理。`createTaskId()`（タスクID発行）と `createIcon()`（Material Symbolsのインライン SVG生成）も共通実装として提供し、`src/lms/content.js` と `src/ui/*.js` から重複なく利用する |
-| `src/lms/class-catalog.js` | ホームとマイページから年度・授業ID・科目名を抽出して保存 |
+| `src/lms/class-catalog.js` | ホームとマイページ（学生用/教員用）から年度・授業ID・科目名を抽出して保存。`ClassCatalog`としてtasks.htmlからも直接呼べる |
 | `src/ui/popup.html` / `src/ui/popup.js` | Chrome ツールバーの全タスク一覧 |
 | `src/ui/tasks.html` / `src/ui/tasks.js` | 年度別の専用管理画面、授業一覧の背景取得、保留タスクの反映 |
 | `src/ui/settings.html` / `src/ui/settings.js` | 保存先切替、完了後自動削除の設定、同期チェック、JSON入出力、削除、使用量表示、Googleドライブ連携（ログイン・バックアップ・復元）、Google Tasks連携の有効化・既存タスクの手動バックフィル |
@@ -78,7 +78,7 @@
 
 Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` で、`src/core/task-lifecycle.js` → `src/core/service-worker-utils.js` → `src/sync/google-auth.js` → `src/sync/drive/drive-sync.js` → `src/sync/google-tasks/google-tasks-sync.js` → Drive / Google Tasks の各 `mirror-background` の順に読み込みます。`src/core/service-worker-utils.js` は両ミラーより前に必要です。`TaskMutationQueue` 自体は `importScripts()` 後に作られるため、共通の `runExclusive()` は呼出し時にキューを参照します。
 
-`src/core/mutation-lock-background.js` は DOM やタスク本体へ触れず、`runtime.connect()` の Port を要求順に1件ずつ許可します。content script の Web Locks はホスト側、拡張画面の Web Locks は拡張機能側に分かれるため、この Service Worker のキューを全体変更ロックとして使用します。専用画面によるマイページ取得は `chrome.tabs.create({ active: false })` と content script のメッセージで完結します。取得成功時だけ送信元タブと更新日時を検証して背景タブを閉じ、失敗時はログイン状態を確認できるよう残します。
+`src/core/mutation-lock-background.js` は DOM やタスク本体へ触れず、`runtime.connect()` の Port を要求順に1件ずつ許可します。content script の Web Locks はホスト側、拡張画面の Web Locks は拡張機能側に分かれるため、この Service Worker のキューを全体変更ロックとして使用します。専用画面によるマイページ取得は、まず `src/lms/class-catalog.js` を `tasks.html` にも読み込み、公開している `ClassCatalog.refreshFromMyPage()` を直接呼んでタブを開かずに取得します（`manifest.json` の `host_permissions` により拡張機能ページからの `fetch()` でもCookie付きでクロスオリジン取得できる）。これが失敗した場合だけ `chrome.tabs.create({ active: false })` と content script のメッセージによる背景タブ方式へフォールバックします。取得成功時だけ送信元タブと更新日時を検証して背景タブを閉じ、失敗時はログイン状態を確認できるよう残します。`class-catalog.js` の自動実行（`initialize()`）は `location.origin` が実サイトの場合だけ行い、拡張機能ページに読み込まれた場合は呼び出し側が明示的に呼ぶまで何もしません。
 
 ## データ契約
 
@@ -137,6 +137,7 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 | `__class_catalog__` | マイページ由来の完全な年度別授業一覧 |
 | `__class_catalog_home__` | ホーム由来の現年度補助一覧 |
 | `__class_catalog_attempt__` | マイページ取得を最後に試みた時刻 |
+| `__teacher_mode__` | 授業一覧の取得先を教員用マイページ（`tMyPage.php`）にするかの真偽値。未設定・`false` は学生用（`sMyPage.php`）。実際にどちらかのマイページを開いた時点で自動更新される |
 | `__pending_task_add__:<taskId>` | 旧バージョンの追加専用保留キー。読み込み・移行互換のみ |
 | `__pending_task_adds__` | 旧バージョンの保留タスク配列。読み込み互換のみ |
 | `__completed_task_retention_days__` | 完了後の自動削除日数。未設定・`0` は無効、選択肢は1/3/7/14/30/90日 |
@@ -162,7 +163,8 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 - 完全一覧 `__class_catalog__` とホーム補助一覧 `__class_catalog_home__` を分離してください。
 - ホームには原則として現年度しかないため、ホーム抽出結果で過年度を含む完全一覧を上書きしないでください。
 - 結合時は同じ年度・授業IDについて完全一覧を優先し、表示時は年度降順・科目名の日本語順にします。
-- マイページの主要セレクターは `#div-mypage .list-group.classes.classes-student-view` と `.a-mypage-class` です。汎用的な `.panel.panel-default` だけで授業一覧と判断しないでください。
+- マイページの主要セレクターは `#div-mypage .list-group.classes.classes-student-view` と `.a-mypage-class` です。汎用的な `.panel.panel-default` だけで授業一覧と判断しないでください。**教員アカウント用マイページ（`tMyPage.php`）が同じセレクターで解析できるかは未確認です**（実際のHTMLを未取得のため、学生用と同じ構造を仮定しています）。教員アカウントで一覧が正しく取れない場合は、まず教員用マイページのHTMLを確認してからセレクターを調整してください。
+- マイページのURLはアカウント種別で異なり、学生用が `/portal/lmsinc/sMyPage.php`、教員用が `/portal/lmsinc/tMyPage.php` です。`__teacher_mode__`（`chrome.storage.local`）でどちらを使うかを保持し、実際にどちらかのマイページを開いた時点で自動的に判定・上書き保存します。設定ページの「高度な設定」から手動でも切り替えられます（タブを開かずに背景取得する場合など、実際にマイページを開いたことが無い端末向けの手動指定用）。
 - 授業IDは `/lms/class/<数字>` を基本に取得し、マイページでは必要に応じて `c` クエリパラメーターをフォールバックに使います。
 
 ### 初回同期中のローカル操作
