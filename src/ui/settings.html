@@ -325,6 +325,26 @@
       background: #e6f4ea;
     }
 
+    .mode-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+
+    .mode-badge.recommended {
+      color: #1e7b34;
+      background: #e2f3e5;
+    }
+
+    .mode-badge.deprecated {
+      color: #8a6d00;
+      background: #fff3d6;
+    }
+
     .mode-option small {
       color: #777;
     }
@@ -480,30 +500,6 @@
     <h3><svg class="mi" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>保存先</h3>
     <p>タスクの保存先を選択できます。切り替えるときは、現在のタスクが新しい保存先へコピーされます。</p>
     <label class="mode-option">
-      <input type="radio" name="storage-mode" value="sync">
-      <span class="mode-icon-wrap sync"><svg class="mi" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg></span>
-      <span>
-        <b>Google アカウントで同期</b><br>
-        <small>Chrome にログインして同期をオンにしていれば、他のパソコンでも同じタスクを使えます（上限 約100KB）。</small>
-      </span>
-    </label>
-    <details id="sync-guide" hidden>
-      <summary><b>⚠ 同期を使うには Chrome 側の設定が必要です（クリックで手順を表示）</b></summary>
-      <p>
-        <button type="button" id="btn-open-sync-settings">chrome://settings/account を開く</button>
-        を開き、「拡張機能」をオンにしてください。
-      </p>
-      <img src="image/2image.png" alt="「拡張機能」のスイッチをオンにする">
-    </details>
-    <label class="mode-option">
-      <input type="radio" name="storage-mode" value="local">
-      <span class="mode-icon-wrap local"><svg class="mi" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg></span>
-      <span>
-        <b>この端末のみ（ローカル保存）</b><br>
-        <small>タスクをこのパソコンの中だけに保存します。他のパソコンとは共有されません（上限 約10MB）。</small>
-      </span>
-    </label>
-    <label class="mode-option">
       <input type="radio" name="storage-mode" value="drive">
       <span class="mode-icon-wrap drive"><svg viewBox="0 0 87.3 78" width="20" height="18" aria-hidden="true">
         <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
@@ -514,10 +510,34 @@
         <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
       </svg></span>
       <span>
-        <b>Google ドライブで共有</b><br>
+        <b>Google ドライブで共有</b><span class="mode-badge recommended">おすすめ</span><br>
         <small>この端末に保存しつつ、マイドライブの「stalog_task_plus」フォルダと自動で同期します。同じGoogleアカウントでログインした他のパソコンとタスクを共有できます（Chromeの同期設定は不要）。選択時にGoogleログインを求められます。</small>
       </span>
     </label>
+    <label class="mode-option">
+      <input type="radio" name="storage-mode" value="local">
+      <span class="mode-icon-wrap local"><svg class="mi" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg></span>
+      <span>
+        <b>この端末のみ（ローカル保存）</b><br>
+        <small>タスクをこのパソコンの中だけに保存します。他のパソコンとは共有されません（上限 約10MB）。追加設定不要で最も確実に動作します。</small>
+      </span>
+    </label>
+    <label class="mode-option">
+      <input type="radio" name="storage-mode" value="sync">
+      <span class="mode-icon-wrap sync"><svg class="mi" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg></span>
+      <span>
+        <b>Google アカウントで同期</b><span class="mode-badge deprecated">非推奨</span><br>
+        <small>ブラウザ自体の同期機能（Chromeの場合はGoogleアカウント）に依存するため、設定が必要な場合があり上限も小さめです（約100KB）。他のパソコンと共有したい場合は、上の「Googleドライブで共有」をおすすめします。</small>
+      </span>
+    </label>
+    <details id="sync-guide" hidden>
+      <summary><b>⚠ 同期を使うには Chrome 側の設定が必要です（クリックで手順を表示）</b></summary>
+      <p>
+        <button type="button" id="btn-open-sync-settings">chrome://settings/account を開く</button>
+        を開き、「拡張機能」をオンにしてください。
+      </p>
+      <img src="image/2image.png" alt="「拡張機能」のスイッチをオンにする">
+    </details>
   </section>
 
   <section>
