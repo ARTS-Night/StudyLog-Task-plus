@@ -261,6 +261,33 @@ async function main() {
   assert.equal(await lifecycle.saveRetentionDays("2"), 0, "選択肢にない日数はオフとして保存する");
   assert.equal(localArea._data.__completed_task_retention_days__, 0);
 
+  // 期限(dueAt/dueHasTime): 日付のみは「その日の終わり」、時刻ありは指定時刻。
+  const dateOnly = lifecycle.computeDue("2026-08-01", "", false);
+  assert.equal(dateOnly.dueHasTime, false);
+  assert.equal(new Date(dateOnly.dueAt).getHours(), 23, "時刻なしの期限はその日の23:59:59とする");
+  const withTime = lifecycle.computeDue("2026-08-01", "09:30", true);
+  assert.equal(withTime.dueHasTime, true);
+  assert.equal(new Date(withTime.dueAt).getHours(), 9);
+  assert.equal(new Date(withTime.dueAt).getMinutes(), 30);
+  const noDate = lifecycle.computeDue("", "09:30", true);
+  assert.equal(noDate.dueAt, 0, "日付が無ければ時刻指定でも期限なしとする");
+  const invalidDate = lifecycle.computeDue("not-a-date", "", false);
+  assert.equal(invalidDate.dueAt, 0, "不正な日付は期限なしとする");
+
+  // normalizeEntry（copyTimestamps経由）は期限を保持し、無効値・未設定は捏造しない。
+  const withDue = lifecycle.normalizeEntry(
+    { tasks: [{ id: "t1", text: "提出", done: false, dueAt: withTime.dueAt, dueHasTime: true }] },
+    "600"
+  ).tasks[0];
+  assert.equal(withDue.dueAt, withTime.dueAt);
+  assert.equal(withDue.dueHasTime, true);
+  const withoutDue = lifecycle.normalizeEntry(
+    { tasks: [{ id: "t2", text: "期限なし", done: false }] },
+    "600"
+  ).tasks[0];
+  assert.equal(withoutDue.dueAt, undefined, "期限未設定のタスクへ日時を捏造しない");
+  assert.equal(withoutDue.dueHasTime, undefined);
+
   console.log("task lifecycle test passed");
 }
 

@@ -49,8 +49,9 @@ const LocalTaskStore = (() => {
       subject: typeof value.subject === "string" ? value.subject : "" };
     if (value.type !== "add" && value.type !== "remove") {
       const defaults = value.type === "edit" ? ["text"] : ["done", "completedAt"];
+      const allowedFields = ["text", "done", "completedAt", "dueAt", "dueHasTime"];
       op.fields = Array.isArray(value.fields)
-        ? [...new Set(value.fields.filter((field) => ["text", "done", "completedAt"].includes(field)))]
+        ? [...new Set(value.fields.filter((field) => allowedFields.includes(field)))]
         : defaults;
     }
     if (value.type !== "remove") {

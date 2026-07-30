@@ -153,6 +153,22 @@ const settle = async (turns = 12) => { for (let i = 0; i < turns; i += 1) await 
   assert.equal(local._data.__task_pending_ops__, undefined,
     "通知印の保存失敗だけで反映済み操作をoutboxへ戻さない");
 
+  // 期限(dueAt/dueHasTime)はaddで保存でき、editでもfieldsに明示すれば更新・削除できる。
+  await store.mutate({ type: "add", classId: "100", taskId: "due-task", subject: "ミラー授業",
+    task: { id: "due-task", text: "期限あり", done: false, dueAt: 8640000000000, dueHasTime: true } });
+  await settle();
+  let dueTask = sync._data["100"].tasks.find((task) => task.id === "due-task");
+  assert.equal(dueTask.dueAt, 8640000000000, "addで期限を保存する");
+  assert.equal(dueTask.dueHasTime, true);
+
+  await store.mutate({ type: "edit", classId: "100", taskId: "due-task", subject: "ミラー授業",
+    fields: ["text", "dueAt", "dueHasTime"],
+    task: { id: "due-task", text: "期限あり", done: false } });
+  await settle();
+  dueTask = sync._data["100"].tasks.find((task) => task.id === "due-task");
+  assert.equal(dueTask.dueAt, undefined, "fieldsに指定すれば編集で期限を削除できる");
+  assert.equal(dueTask.dueHasTime, undefined);
+
   await new Promise((resolve) => local.set({
     __storage_mode__: "drive",
     "200": { subject: "ドライブ授業",

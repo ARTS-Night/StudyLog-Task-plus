@@ -98,6 +98,7 @@ const elementTags = {
   "class-search": "input",
   "class-select": "select",
   "new-task-text": "textarea",
+  "add-due-slot": "div",
   "btn-add": "button",
   "catalog-status": "p",
   "btn-update-catalog": "button",
@@ -106,10 +107,12 @@ const elementTags = {
   "task-search": "input",
   "btn-clear-task-search": "button",
   "task-status-filter": "select",
+  "task-sort-row": "div",
   "btn-refresh": "button",
   "edit-dialog": "dialog",
   "edit-form": "form",
   "edit-task-text": "textarea",
+  "edit-due-slot": "div",
   "btn-edit-cancel": "button",
   status: "div"
 };
