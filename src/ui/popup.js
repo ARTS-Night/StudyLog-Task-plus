@@ -59,6 +59,21 @@
     };
     appendDate(task.createdAt, "追加", "task-created");
     appendDate(task.completedAt, "完了", "task-completed");
+    const dueAt = TaskLifecycle.normalizeTimestamp(task.dueAt);
+    if (dueAt) {
+      const date = new Date(dueAt);
+      if (!Number.isNaN(date.getTime())) {
+        const overdue = !task.done && dueAt < Date.now();
+        const element = document.createElement("time");
+        element.className = "task-due" + (overdue ? " overdue" : "");
+        element.dateTime = date.toISOString();
+        const timeText = task.dueHasTime === true
+          ? " " + String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0")
+          : "";
+        element.textContent = "期限 " + (date.getMonth() + 1) + "月" + date.getDate() + "日" + timeText;
+        main.appendChild(element);
+      }
+    }
     return main;
   }
 

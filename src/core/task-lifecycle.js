@@ -24,6 +24,14 @@
     const completedAt = normalizeTimestamp(source && source.completedAt);
     if (target.done === true && completedAt) target.completedAt = completedAt;
 
+    // dueAt（期限）は無効・未設定なら省略する。dueHasTime は dueAt が無い時は意味を持たないため、
+    // dueAt が設定されている時だけ true を引き継ぐ（false は省略＝時刻なしの既定値）。
+    const dueAt = normalizeTimestamp(source && source.dueAt);
+    if (dueAt) {
+      target.dueAt = dueAt;
+      if (source && source.dueHasTime === true) target.dueHasTime = true;
+    }
+
     if (source && typeof source.googleTaskListId === "string" && source.googleTaskListId !== "") {
       target.googleTaskListId = source.googleTaskListId;
     }
@@ -31,6 +39,26 @@
       target.googleTaskId = source.googleTaskId;
     }
     return target;
+  }
+
+  // 期限フォーム共通: <input type="date"> と <input type="time"> の値から dueAt/dueHasTime を作る。
+  // 日付が空・不正なら期限なし（dueAt: 0）。時刻ありは日付が有効な時だけ成立する。
+  // 時刻なしの期限は「その日の終わりまで」という意味でその日の23:59:59.999とする。
+  function computeDue(dateValue, timeValue, hasTime) {
+    if (typeof dateValue !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      return { dueAt: 0, dueHasTime: false };
+    }
+    const [year, month, day] = dateValue.split("-").map(Number);
+    const wantsTime = hasTime === true && typeof timeValue === "string" && /^\d{2}:\d{2}$/.test(timeValue);
+    if (wantsTime) {
+      const [hour, minute] = timeValue.split(":").map(Number);
+      const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+      const dueAt = normalizeTimestamp(date.getTime());
+      return dueAt ? { dueAt, dueHasTime: true } : { dueAt: 0, dueHasTime: false };
+    }
+    const date = new Date(year, month - 1, day, 23, 59, 59, 999);
+    const dueAt = normalizeTimestamp(date.getTime());
+    return dueAt ? { dueAt, dueHasTime: false } : { dueAt: 0, dueHasTime: false };
   }
 
   function setDone(task, done, changedAt = Date.now()) {
@@ -280,6 +308,7 @@
     normalizeEntry,
     normalizeTimestamp,
     copyTimestamps,
+    computeDue,
     setDone,
     normalizeRetentionDays,
     saveRetentionDays,

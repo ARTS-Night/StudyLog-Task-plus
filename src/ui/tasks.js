@@ -27,8 +27,15 @@
   const editTaskText = document.getElementById("edit-task-text");
   const editCancelButton = document.getElementById("btn-edit-cancel");
   const statusEl = document.getElementById("status");
+  const taskSortRow = document.getElementById("task-sort-row");
+  const addDueRow = createDueInputRow();
+  document.getElementById("add-due-slot").appendChild(addDueRow.row);
+  const editDueRow = createDueInputRow();
+  editDueRow.row.querySelectorAll("input").forEach((input) => { input.dataset.write = ""; });
+  document.getElementById("edit-due-slot").appendChild(editDueRow.row);
 
   let mode = "sync";
+  let taskSortMode = "created";
   let storageModeReady = false;
   let storage = chrome.storage.sync;
   let watchedArea = "sync";
@@ -89,6 +96,109 @@
     return element;
   }
 
+  function createDueDate(task) {
+    const dueAt = TaskLifecycle.normalizeTimestamp(task && task.dueAt);
+    if (!dueAt) return null;
+    const date = new Date(dueAt);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const element = document.createElement("time");
+    const overdue = !task.done && dueAt < Date.now();
+    element.className = "task-due" + (overdue ? " overdue" : "");
+    element.dateTime = date.toISOString();
+    const dateText = `${date.getMonth() + 1}月${date.getDate()}日`;
+    const timeText = task.dueHasTime === true
+      ? ` ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+      : "";
+    element.textContent = `期限 ${dateText}${timeText}`;
+    return element;
+  }
+
+  // 期限の入力行（追加・編集フォーム共通）。日付を外すと時刻も自動でオフになり、
+  // 時刻を入れると日付も自動でオンになる（時刻だけの期限は作れない）。
+  function createDueInputRow() {
+    const row = document.createElement("div");
+    row.className = "due-row";
+
+    const dateLabel = document.createElement("label");
+    const dateCheckbox = document.createElement("input");
+    dateCheckbox.type = "checkbox";
+    const dateInput = document.createElement("input");
+    dateInput.type = "date";
+    dateInput.hidden = true;
+    dateLabel.append(dateCheckbox, document.createTextNode("期限"), dateInput);
+
+    const timeLabel = document.createElement("label");
+    const timeCheckbox = document.createElement("input");
+    timeCheckbox.type = "checkbox";
+    timeCheckbox.disabled = true;
+    const timeInput = document.createElement("input");
+    timeInput.type = "time";
+    timeInput.hidden = true;
+    timeLabel.append(timeCheckbox, document.createTextNode("時刻も指定"), timeInput);
+
+    row.append(dateLabel, timeLabel);
+
+    function todayValue() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    }
+
+    dateCheckbox.addEventListener("change", () => {
+      dateInput.hidden = !dateCheckbox.checked;
+      if (dateCheckbox.checked && !dateInput.value) dateInput.value = todayValue();
+      timeCheckbox.disabled = !dateCheckbox.checked;
+      if (!dateCheckbox.checked) {
+        timeCheckbox.checked = false;
+        timeInput.hidden = true;
+      }
+    });
+    timeCheckbox.addEventListener("change", () => {
+      if (timeCheckbox.checked && !dateCheckbox.checked) {
+        dateCheckbox.checked = true;
+        dateCheckbox.dispatchEvent(new Event("change"));
+      }
+      timeInput.hidden = !timeCheckbox.checked;
+    });
+
+    function setValue(dueAt, dueHasTime) {
+      const timestamp = TaskLifecycle.normalizeTimestamp(dueAt);
+      if (!timestamp) {
+        dateCheckbox.checked = false;
+        dateInput.hidden = true;
+        dateInput.value = "";
+        timeCheckbox.checked = false;
+        timeCheckbox.disabled = true;
+        timeInput.hidden = true;
+        timeInput.value = "";
+        return;
+      }
+      const date = new Date(timestamp);
+      dateCheckbox.checked = true;
+      dateInput.hidden = false;
+      dateInput.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      timeCheckbox.disabled = false;
+      timeCheckbox.checked = dueHasTime === true;
+      timeInput.hidden = !timeCheckbox.checked;
+      timeInput.value = dueHasTime === true
+        ? `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+        : "";
+    }
+
+    function getValue() {
+      return TaskLifecycle.computeDue(dateInput.value, timeInput.value, timeCheckbox.checked);
+    }
+
+    function setDisabled(disabled) {
+      dateCheckbox.disabled = disabled;
+      dateInput.disabled = disabled;
+      timeCheckbox.disabled = disabled || !dateCheckbox.checked;
+      timeInput.disabled = disabled || !timeCheckbox.checked;
+    }
+
+    return { row, setValue, getValue, setDisabled };
+  }
+
   function createTaskMain(task) {
     const main = document.createElement("div");
     main.className = "task-main";
@@ -100,8 +210,10 @@
 
     const created = createTaskDate(task.createdAt, "追加", "task-created");
     const completed = createTaskDate(task.completedAt, "完了", "task-completed");
+    const due = createDueDate(task);
     if (created) main.appendChild(created);
     if (completed) main.appendChild(completed);
+    if (due) main.appendChild(due);
     return main;
   }
 
@@ -297,6 +409,7 @@
     classSelect.disabled = busy || !hasSelectedClass;
     newTaskText.disabled = busy || !hasSelectedClass;
     addButton.disabled = busy || !hasSelectedClass;
+    addDueRow.setDisabled(busy || !hasSelectedClass);
 
     taskGroups.querySelectorAll("[data-write]").forEach((element) => {
       element.disabled = busy;
@@ -539,7 +652,18 @@
 
     const list = document.createElement("ul");
     list.className = "task-list";
-    entry.tasks.forEach((task) => {
+    const sortedTasks = entry.tasks.slice();
+    if (taskSortMode === "due") {
+      sortedTasks.sort((a, b) => {
+        const aDue = TaskLifecycle.normalizeTimestamp(a.dueAt);
+        const bDue = TaskLifecycle.normalizeTimestamp(b.dueAt);
+        if (aDue && bDue) return aDue - bDue;
+        if (aDue) return -1;
+        if (bDue) return 1;
+        return 0;
+      });
+    }
+    sortedTasks.forEach((task) => {
       const item = document.createElement("li");
       item.className = `task-item${task.done ? " done" : ""}`;
 
@@ -599,7 +723,7 @@
     }
   }
 
-  async function mutateClass(classId, subjectHint, mutate, typeHint) {
+  async function mutateClass(classId, subjectHint, mutate, typeHint, fields) {
     if (busy) return false;
     setBusy(true);
     let saved = false;
@@ -623,7 +747,8 @@
           const previous = before.get(task.id);
           if (!previous || JSON.stringify(previous) !== JSON.stringify(task)) {
             operation = { type: previous ? (typeHint || "edit") : "add",
-              classId, taskId: task.id, subject: latest.subject || subjectHint || "", task };
+              classId, taskId: task.id, subject: latest.subject || subjectHint || "", task,
+              ...(fields ? { fields } : {}) };
             break;
           }
         }
@@ -662,14 +787,21 @@
     }
 
     const createdAt = Date.now();
+    const due = addDueRow.getValue();
     const saved = await mutateClass(selected.classId, selected.subject, (tasks) => {
       let id = TaskLifecycle.createTaskId();
       while (tasks.some((task) => task.id === id)) id = TaskLifecycle.createTaskId();
-      tasks.push({ id, text, done: false, createdAt });
+      const task = { id, text, done: false, createdAt };
+      if (due.dueAt) {
+        task.dueAt = due.dueAt;
+        if (due.dueHasTime) task.dueHasTime = true;
+      }
+      tasks.push(task);
       return tasks;
     });
     if (saved) {
       newTaskText.value = "";
+      addDueRow.setValue(0, false);
       newTaskText.focus();
     }
   }
@@ -689,6 +821,7 @@
     editing = { classId: entry.classId, subject: entry.subject, taskId: task.id };
     editReturnFocus = returnFocus;
     editTaskText.value = task.text;
+    editDueRow.setValue(task.dueAt, task.dueHasTime);
     editDialog.showModal();
     editTaskText.focus();
     editTaskText.select();
@@ -696,6 +829,7 @@
 
   function closeEditDialog() {
     if (editDialog.open) editDialog.close();
+    editDueRow.setValue(0, false);
   }
 
   async function saveEdit(event) {
@@ -707,13 +841,21 @@
       return;
     }
     const target = { ...editing };
+    const due = editDueRow.getValue();
     closeEditDialog();
     await mutateClass(target.classId, target.subject, (tasks) => {
       const index = tasks.findIndex((task) => task.id === target.taskId);
       if (index < 0) throw new Error("このタスクは別の画面で削除されています");
-      tasks[index] = { ...tasks[index], text };
+      const next = { ...tasks[index], text };
+      delete next.dueAt;
+      delete next.dueHasTime;
+      if (due.dueAt) {
+        next.dueAt = due.dueAt;
+        if (due.dueHasTime) next.dueHasTime = true;
+      }
+      tasks[index] = next;
       return tasks;
-    }, "edit");
+    }, "edit", ["text", "dueAt", "dueHasTime"]);
   }
 
   function deleteTask(entry, task) {
@@ -905,6 +1047,14 @@
   classSearch.addEventListener("input", renderClassOptions);
   taskSearch.addEventListener("input", renderTasks);
   taskStatusFilter.addEventListener("change", renderTasks);
+  taskSortRow.querySelectorAll(".sort-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      taskSortMode = button.dataset.sort;
+      taskSortRow.querySelectorAll(".sort-btn").forEach((btn) =>
+        btn.classList.toggle("active", btn === button));
+      renderTasks();
+    });
+  });
   clearTaskSearchButton.addEventListener("click", () => {
     taskSearch.value = "";
     taskStatusFilter.value = "all";

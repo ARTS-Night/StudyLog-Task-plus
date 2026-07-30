@@ -467,6 +467,64 @@
       text-decoration: none;
     }
 
+    .task-due {
+      color: #8a6d00;
+      font-size: 11px;
+      line-height: 1.35;
+      text-decoration: none;
+    }
+
+    .task-due.overdue {
+      color: #c62828;
+      font-weight: 700;
+    }
+
+    .due-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .due-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    .due-row input[type="date"],
+    .due-row input[type="time"] {
+      font-size: 12px;
+      padding: 2px 4px;
+    }
+
+    .sort-label {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .sort-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .sort-btn {
+      padding: 4px 12px;
+      font-size: 12px;
+      border: 1px solid #bbb;
+      border-radius: 12px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .sort-btn.active {
+      color: #fff;
+      background: #1e88e5;
+      border-color: #1e88e5;
+    }
+
     .task-item.done .task-text {
       color: #999999;
       text-decoration: line-through;
@@ -639,6 +697,8 @@
                   <textarea id="new-task-text" maxlength="2000" placeholder="例：第3回レポートを提出する" required data-write disabled></textarea>
                 </div>
 
+                <div id="add-due-slot" class="field"></div>
+
                 <div class="form-actions">
                   <button id="btn-add" class="button primary" type="submit" data-write disabled><svg class="mi" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>タスクを追加</button>
                 </div>
@@ -668,6 +728,13 @@
               <option value="done">完了</option>
             </select>
           </div>
+          <div class="field">
+            <span class="sort-label">並び替え</span>
+            <div id="task-sort-row" class="sort-row" role="group" aria-label="タスクの並び替え">
+              <button type="button" class="sort-btn active" data-sort="created">追加日順</button>
+              <button type="button" class="sort-btn" data-sort="due">締切が近い順</button>
+            </div>
+          </div>
         </div>
 
         <div id="task-groups" class="task-groups"></div>
@@ -682,6 +749,7 @@
         <label for="edit-task-text">タスク内容</label>
         <textarea id="edit-task-text" maxlength="2000" required data-write></textarea>
       </div>
+      <div id="edit-due-slot" class="field"></div>
       <div class="dialog-actions">
         <button id="btn-edit-cancel" class="button" type="button">キャンセル</button>
         <button class="button primary" type="submit" data-write>保存</button>

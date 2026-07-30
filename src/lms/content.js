@@ -366,6 +366,58 @@
         color: #24743e;
       }
 
+      .lms-task-due {
+        color: #8a6d00;
+      }
+
+      .lms-task-due.overdue {
+        color: #c62828;
+        font-weight: 700;
+      }
+
+      .lms-task-due-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        font-size: 12px;
+      }
+
+      .lms-task-due-row label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+      }
+
+      .lms-task-due-row input[type="date"],
+      .lms-task-due-row input[type="time"] {
+        font-size: 12px;
+        padding: 2px 4px;
+      }
+
+      .lms-sort-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .lms-sort-btn {
+        padding: 3px 10px;
+        font-size: 11px;
+        border: 1px solid #bbb;
+        border-radius: 12px;
+        background: #fff;
+        cursor: pointer;
+      }
+
+      .lms-sort-btn.active {
+        color: #fff;
+        background: #1e88e5;
+        border-color: #1e88e5;
+      }
+
       .lms-task-item.done .lms-task-text {
         text-decoration: line-through;
         color: #999;
@@ -767,6 +819,12 @@
     const doneTab = createTab("完了", true);
     tabs.append(incompleteTab, doneTab);
 
+    const sortRow = document.createElement("div");
+    sortRow.className = "lms-sort-row";
+    const sortByAddedBtn = createSortButton("追加日順", "created");
+    const sortByDueBtn = createSortButton("締切が近い順", "due");
+    sortRow.append(sortByAddedBtn, sortByDueBtn);
+
     const list = document.createElement("ul");
     list.className = "lms-task-list";
     const waiting = document.createElement("li");
@@ -779,6 +837,7 @@
     form.hidden = true;
     const textarea = document.createElement("textarea");
     textarea.placeholder = "タスクの内容を入力...";
+    const dueRow = createDueInputRow();
     const formButtons = document.createElement("div");
     formButtons.className = "lms-task-form-buttons";
     const cancelButton = document.createElement("button");
@@ -789,14 +848,15 @@
     saveButton.className = "lms-memo-save-btn";
     saveButton.textContent = "保存";
     formButtons.append(cancelButton, saveButton);
-    form.append(textarea, formButtons);
-    body.append(tabs, list, form);
+    form.append(textarea, dueRow.row, formButtons);
+    body.append(tabs, sortRow, list, form);
     panel.append(heading, body);
     column.insertBefore(panel, news.nextSibling);
 
     let allTasks = [];
     let showDone = false;
     let editing = null;
+    let sortMode = "created";
 
     function createTab(label, done) {
       const button = document.createElement("button");
@@ -814,6 +874,20 @@
       return button;
     }
 
+    function createSortButton(label, mode) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `lms-sort-btn${mode === "created" ? " active" : ""}`;
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        sortMode = mode;
+        sortByAddedBtn.classList.toggle("active", mode === "created");
+        sortByDueBtn.classList.toggle("active", mode === "due");
+        render();
+      });
+      return button;
+    }
+
     async function load() {
       const generation = modeGeneration;
       try {
@@ -824,14 +898,9 @@
         Object.entries(result).forEach(([classId, entry]) => {
           entry.tasks.forEach((task) => {
             allTasks.push({ classId, subject: entry.subject || "不明な授業", task,
-              createdAt: TaskLifecycle.normalizeTimestamp(task.createdAt), order: order++ });
+              createdAt: TaskLifecycle.normalizeTimestamp(task.createdAt),
+              dueAt: TaskLifecycle.normalizeTimestamp(task.dueAt), order: order++ });
           });
-        });
-        allTasks.sort((a, b) => {
-          if (a.createdAt && b.createdAt) return a.createdAt - b.createdAt || a.order - b.order;
-          if (a.createdAt) return -1;
-          if (b.createdAt) return 1;
-          return a.order - b.order;
         });
         render();
       } catch (error) {
@@ -850,6 +919,21 @@
     function render() {
       list.innerHTML = "";
       const visible = allTasks.filter((item) => item.task.done === showDone);
+      if (sortMode === "due") {
+        visible.sort((a, b) => {
+          if (a.dueAt && b.dueAt) return a.dueAt - b.dueAt || a.order - b.order;
+          if (a.dueAt) return -1;
+          if (b.dueAt) return 1;
+          return a.order - b.order;
+        });
+      } else {
+        visible.sort((a, b) => {
+          if (a.createdAt && b.createdAt) return a.createdAt - b.createdAt || a.order - b.order;
+          if (a.createdAt) return -1;
+          if (b.createdAt) return 1;
+          return a.order - b.order;
+        });
+      }
       if (visible.length === 0) {
         const empty = document.createElement("li");
         empty.className = "lms-task-empty";
@@ -894,6 +978,8 @@
           showDone ? "lms-task-completed" : "lms-task-created"
         );
         if (date) content.appendChild(date);
+        const due = createDueDateElement(entry.task);
+        if (due) content.appendChild(due);
 
         const actions = document.createElement("div");
         actions.className = "lms-task-actions";
@@ -921,6 +1007,7 @@
     function openForm(entry) {
       editing = { classId: entry.classId, taskId: entry.task.id };
       textarea.value = entry.task.text;
+      dueRow.setValue(entry.task.dueAt, entry.task.dueHasTime);
       form.hidden = false;
       textarea.focus();
     }
@@ -928,6 +1015,7 @@
     function closeForm() {
       editing = null;
       textarea.value = "";
+      dueRow.setValue(0, false);
       form.hidden = true;
     }
 
@@ -938,12 +1026,20 @@
         if (!current) throw new Error("対象のタスクが見つかりませんでした");
         if (operation.type === "remove") {
           await LocalTaskStore.mutate({ type: "remove", classId, taskId, subject: entry.subject });
-        } else {
-          const task = operation.type === "set-done"
-            ? TaskLifecycle.setDone(current, operation.done, operation.changedAt)
-            : { ...current, text: operation.text };
+        } else if (operation.type === "set-done") {
+          const task = TaskLifecycle.setDone(current, operation.done, operation.changedAt);
           await LocalTaskStore.mutate({ type: operation.type, classId, taskId,
             subject: entry.subject, task });
+        } else {
+          const task = { ...current, text: operation.text };
+          delete task.dueAt;
+          delete task.dueHasTime;
+          if (operation.due && operation.due.dueAt) {
+            task.dueAt = operation.due.dueAt;
+            if (operation.due.dueHasTime) task.dueHasTime = true;
+          }
+          await LocalTaskStore.mutate({ type: operation.type, classId, taskId,
+            subject: entry.subject, task, fields: ["text", "dueAt", "dueHasTime"] });
         }
         showToast(storageMode === "sync" ? "端末に保存しました（確認後に同期）" : "保存しました");
         await load();
@@ -961,8 +1057,9 @@
         return;
       }
       const target = editing;
+      const due = dueRow.getValue();
       closeForm();
-      mutateTask(target.classId, target.taskId, { type: "edit", text });
+      mutateTask(target.classId, target.taskId, { type: "edit", text, due });
     });
 
     panel.refreshTasks = load;
@@ -988,6 +1085,103 @@
     return element;
   }
 
+  // 期限（dueAt/dueHasTime）の表示要素。時刻ありなら時刻も表示し、未完了で期限を過ぎていれば強調する。
+  function createDueDateElement(task) {
+    const dueAt = TaskLifecycle.normalizeTimestamp(task && task.dueAt);
+    if (!dueAt) return null;
+    const date = new Date(dueAt);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const element = document.createElement("time");
+    const overdue = !task.done && dueAt < Date.now();
+    element.className = "lms-task-due" + (overdue ? " overdue" : "");
+    element.dateTime = date.toISOString();
+    const dateText = `${date.getMonth() + 1}月${date.getDate()}日`;
+    const timeText = task.dueHasTime === true
+      ? ` ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+      : "";
+    element.textContent = `期限 ${dateText}${timeText}`;
+    return element;
+  }
+
+  // 期限の入力行（追加・編集フォーム共通）。日付チェックを外すと時刻も自動でオフになり、
+  // 時刻チェックを入れると日付も自動でオンになる（時刻だけの期限は作れない）。
+  function createDueInputRow() {
+    const row = document.createElement("div");
+    row.className = "lms-task-due-row";
+
+    const dateLabel = document.createElement("label");
+    const dateCheckbox = document.createElement("input");
+    dateCheckbox.type = "checkbox";
+    const dateInput = document.createElement("input");
+    dateInput.type = "date";
+    dateInput.hidden = true;
+    dateLabel.append(dateCheckbox, document.createTextNode("期限"), dateInput);
+
+    const timeLabel = document.createElement("label");
+    const timeCheckbox = document.createElement("input");
+    timeCheckbox.type = "checkbox";
+    timeCheckbox.disabled = true;
+    const timeInput = document.createElement("input");
+    timeInput.type = "time";
+    timeInput.hidden = true;
+    timeLabel.append(timeCheckbox, document.createTextNode("時刻も指定"), timeInput);
+
+    row.append(dateLabel, timeLabel);
+
+    function todayValue() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    }
+
+    dateCheckbox.addEventListener("change", () => {
+      dateInput.hidden = !dateCheckbox.checked;
+      if (dateCheckbox.checked && !dateInput.value) dateInput.value = todayValue();
+      timeCheckbox.disabled = !dateCheckbox.checked;
+      if (!dateCheckbox.checked) {
+        timeCheckbox.checked = false;
+        timeInput.hidden = true;
+      }
+    });
+    timeCheckbox.addEventListener("change", () => {
+      if (timeCheckbox.checked && !dateCheckbox.checked) {
+        dateCheckbox.checked = true;
+        dateCheckbox.dispatchEvent(new Event("change"));
+      }
+      timeInput.hidden = !timeCheckbox.checked;
+    });
+
+    function setValue(dueAt, dueHasTime) {
+      const timestamp = TaskLifecycle.normalizeTimestamp(dueAt);
+      if (!timestamp) {
+        dateCheckbox.checked = false;
+        dateInput.hidden = true;
+        dateInput.value = "";
+        timeCheckbox.checked = false;
+        timeCheckbox.disabled = true;
+        timeInput.hidden = true;
+        timeInput.value = "";
+        return;
+      }
+      const date = new Date(timestamp);
+      dateCheckbox.checked = true;
+      dateInput.hidden = false;
+      dateInput.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      timeCheckbox.disabled = false;
+      timeCheckbox.checked = dueHasTime === true;
+      timeInput.hidden = !timeCheckbox.checked;
+      timeInput.value = dueHasTime === true
+        ? `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+        : "";
+    }
+
+    function getValue() {
+      return TaskLifecycle.computeDue(dateInput.value, timeInput.value, timeCheckbox.checked);
+    }
+
+    return { row, setValue, getValue };
+  }
+
   // タスクの一覧・追加・編集 UI を作る共通部品。
   // ポップアップと授業ページ埋め込みパネルの両方で使う。
   function createTaskManager(classId, options) {
@@ -1008,6 +1202,7 @@
     form.hidden = true;
     const formTextarea = document.createElement("textarea");
     formTextarea.placeholder = "タスクの内容を入力...";
+    const dueRow = createDueInputRow();
     const formButtons = document.createElement("div");
     formButtons.className = "lms-task-form-buttons";
     const formCancelBtn = document.createElement("button");
@@ -1018,7 +1213,7 @@
     formSaveBtn.className = "lms-memo-save-btn";
     formSaveBtn.textContent = "保存";
     formButtons.append(formCancelBtn, formSaveBtn);
-    form.append(formTextarea, formButtons);
+    form.append(formTextarea, dueRow.row, formButtons);
     const buttonsRow = document.createElement("div");
     buttonsRow.className = "lms-memo-popup-buttons";
     const addButton = document.createElement("button");
@@ -1084,8 +1279,10 @@
         taskContent.appendChild(text);
         const created = createTaskDateElement(task.createdAt, "追加", "lms-task-created");
         const completed = createTaskDateElement(task.completedAt, "完了", "lms-task-completed");
+        const due = createDueDateElement(task);
         if (created) taskContent.appendChild(created);
         if (completed) taskContent.appendChild(completed);
+        if (due) taskContent.appendChild(due);
         const actions = document.createElement("div");
         actions.className = "lms-task-actions";
         const editBtn = document.createElement("button");
@@ -1110,6 +1307,7 @@
     function openForm(task) {
       editingTaskId = task ? task.id : null;
       formTextarea.value = task ? task.text : "";
+      dueRow.setValue(task ? task.dueAt : 0, task ? task.dueHasTime : false);
       form.hidden = false;
       onFormToggle(true);
       formTextarea.focus();
@@ -1117,6 +1315,7 @@
     function closeForm() {
       form.hidden = true;
       formTextarea.value = "";
+      dueRow.setValue(0, false);
       editingTaskId = null;
       onFormToggle(false);
     }
@@ -1125,22 +1324,35 @@
     formSaveBtn.addEventListener("click", () => {
       const text = formTextarea.value.trim();
       if (!text) { closeForm(); return; }
+      const due = dueRow.getValue();
       let task;
       let type;
+      let fields;
       if (editingTaskId) {
         const current = tasks.find((value) => value.id === editingTaskId);
         if (!current) { closeForm(); void load(); return; }
         task = { ...current, text };
+        delete task.dueAt;
+        delete task.dueHasTime;
+        if (due.dueAt) {
+          task.dueAt = due.dueAt;
+          if (due.dueHasTime) task.dueHasTime = true;
+        }
         tasks = tasks.map((value) => value.id === task.id ? task : value);
         type = "edit";
+        fields = ["text", "dueAt", "dueHasTime"];
       } else {
         task = { id: TaskLifecycle.createTaskId(), text, done: false, createdAt: Date.now() };
+        if (due.dueAt) {
+          task.dueAt = due.dueAt;
+          if (due.dueHasTime) task.dueHasTime = true;
+        }
         tasks.push(task);
         type = "add";
       }
       closeForm();
       renderList();
-      persist({ type, classId: String(classId), taskId: task.id, subject, task });
+      persist({ type, classId: String(classId), taskId: task.id, subject, task, fields });
     });
     const onStorageChanged = (changes, areaName) => {
       if (!body.isConnected) { destroy(); return; }

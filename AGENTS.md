@@ -97,6 +97,8 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
         done: true,
         createdAt: 1784300400000,
         completedAt: 1784386800000,
+        dueAt: 1784386800000,
+        dueHasTime: false,
         googleTaskListId: "GoogleタスクリストID（任意）",
         googleTaskId: "GoogleタスクID（任意）"
       }
@@ -110,6 +112,7 @@ Service Worker は `src/core/mutation-lock-background.js` の `importScripts()` 
 - 編集・完了切替・保留反映・保存先切替・JSON入出力では同じ `createdAt` を維持してください。既存タスクで欠落している場合や、0・負数・非有限値・無効な日時の場合は日付を表示せず、現在日時を捏造しないでください。
 - `completedAt` は未完了から完了へ切り替えた操作時刻です。未完了へ戻すと削除し、再完了時は新しい時刻を設定します。完了済み旧タスクで欠落・無効な場合は日時を捏造せず、自動削除の対象にしません。
 - `googleTaskListId` / `googleTaskId` はGoogle Tasksへ作成済みのタスクだけが持つ空でない文字列です。正規化・編集・完了切替・保存先切替・JSON入出力で維持し、未連携タスクへ値を捏造しないでください。
+- `dueAt`（期限、任意）と `dueHasTime`（期限に時刻を含むか、任意）はセットで扱います。`dueAt` が無効・未設定なら両方省略し、`dueHasTime` は `dueAt` が有効な時だけ意味を持ちます。UIの「日付オン/時刻オン」トグルから `TaskLifecycle.computeDue(dateValue, timeValue, hasTime)` で作ります（時刻なしはその日の23:59:59.999、時刻ありは指定時刻。時刻オンは日付オンを含意し、日付オフなら時刻も強制オフ）。`copyTimestamps()` が createdAt/completedAt と同様に正規化・引き継ぎを行うため、`LocalTaskStore.mutate()` の "add" 操作は自動的に保持します。"edit" 操作で `dueAt`/`dueHasTime` を更新・削除するには、`fields` 配列へ明示的に含めてください（既定値は `["text"]` のみで期限を含みません）。
 - `__` で始まるキーは内部データであり、タスク一覧・エクスポート・一括処理では除外します。
 - タスクが0件になった授業キーは、空配列を書き戻さず `remove` します。
 - 旧形式の文字列メモ、タスク配列、IDなしタスクを読み込む互換処理を維持してください。正規化の共通実装は `TaskLifecycle.normalizeEntry()`（内部で `normalizeTasks()` を使うが非公開）で、content / popup / tasks が委譲します。settings.js のインポート用だけはID再生成を行う独自版です。
