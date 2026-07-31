@@ -453,25 +453,28 @@
       gap: 2px;
     }
 
-    .task-created {
-      color: var(--muted);
+    .task-created,
+    .task-completed,
+    .task-due {
+      display: block;
+      /* grid列が minmax(0, 1fr) で狭くなった時、word-break: break-all の継承等で
+         1文字ごとに折り返り縦書き状に見えることがあるため、常に折り返さない */
+      white-space: nowrap;
       font-size: 11px;
       line-height: 1.35;
       text-decoration: none;
+    }
+
+    .task-created {
+      color: var(--muted);
     }
 
     .task-completed {
       color: var(--green-dark);
-      font-size: 11px;
-      line-height: 1.35;
-      text-decoration: none;
     }
 
     .task-due {
       color: #8a6d00;
-      font-size: 11px;
-      line-height: 1.35;
-      text-decoration: none;
     }
 
     .task-due.overdue {

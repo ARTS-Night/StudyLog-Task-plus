@@ -139,11 +139,17 @@
     }
 
     ul.tasks li .task-created,
-    ul.tasks li .task-completed {
-      color: #66727a;
+    ul.tasks li .task-completed,
+    ul.tasks li .task-due {
+      display: block;
+      white-space: nowrap;
       font-size: 11px;
       line-height: 1.35;
       text-decoration: none;
+    }
+
+    ul.tasks li .task-created {
+      color: #66727a;
     }
 
     ul.tasks li .task-completed {
@@ -152,9 +158,6 @@
 
     ul.tasks li .task-due {
       color: #8a6d00;
-      font-size: 11px;
-      line-height: 1.35;
-      text-decoration: none;
     }
 
     ul.tasks li .task-due.overdue {

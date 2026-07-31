@@ -13,6 +13,20 @@
     return GoogleAuth.authFetch(token, url, options);
   }
 
+  // Google TasksのdueはRFC3339だが、実際には日付部分だけが使われ時刻は無視される。
+  // ローカルのタイムゾーンでの年月日をそのままUTC 00:00として送ることで、
+  // toISOString()経由の変換で日付がずれる（タイムゾーンでUTCの前日/翌日になる）ことを防ぐ。
+  function toGoogleDue(dueAt) {
+    const timestamp = typeof dueAt === "number" && Number.isFinite(dueAt) && dueAt > 0 ? dueAt : 0;
+    if (!timestamp) return null;
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return null;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}T00:00:00.000Z`;
+  }
+
   async function ensureTaskList(subject) {
     const response = await request(`${API}/users/@me/lists`);
     const data = await response.json();
@@ -33,11 +47,14 @@
     };
   }
 
-  async function createTask(taskListId, title, done) {
+  async function createTask(taskListId, title, done, dueAt) {
+    const body = { title, status: done ? "completed" : "needsAction" };
+    const due = toGoogleDue(dueAt);
+    if (due) body.due = due;
     const response = await request(`${API}/lists/${encodeURIComponent(taskListId)}/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, status: done ? "completed" : "needsAction" })
+      body: JSON.stringify(body)
     });
     const created = await response.json();
     return requireId(created && created.id, "Google TasksのタスクIDを取得できませんでした");
@@ -46,7 +63,9 @@
   async function updateTask(taskListId, googleTaskId, task) {
     const body = {
       title: task.title,
-      status: task.done ? "completed" : "needsAction"
+      status: task.done ? "completed" : "needsAction",
+      // due は明示的に含める（未設定=null）ことで、期限を削除した場合もGoogle Tasks側へ反映する。
+      due: toGoogleDue(task.dueAt)
     };
     if (!task.done) body.completed = null;
     await request(`${API}/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(googleTaskId)}`, {

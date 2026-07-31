@@ -124,7 +124,10 @@ function createRuntime({ local = {}, sync = {}, api = {}, failSet } = {}) {
     chrome,
     GoogleTasksSync,
     TaskLifecycle: {
-      physicalStorageMode(value) { return value === "local" || value === "drive" ? "local" : "sync"; }
+      physicalStorageMode(value) { return value === "local" || value === "drive" ? "local" : "sync"; },
+      normalizeTimestamp(value) {
+        return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+      }
     },
     TaskMutationQueue: { run(operation) { return Promise.resolve().then(operation); } },
     console: { ...console, warn() {} },
@@ -202,13 +205,42 @@ async function main() {
     assert.deepEqual(runtime.calls.update[0], {
       listId: "list-数学",
       taskId: "google-1",
-      task: { title: "プリント修正版", done: true }
+      task: { title: "プリント修正版", done: true, dueAt: 0 }
     });
 
     runtime.change("local", "100", { subject: "数学", tasks: [] });
     await settle();
     assert.deepEqual(runtime.calls.delete, [{ listId: "list-数学", taskId: "google-1" }]);
     assert.deepEqual(runtime.localData[PENDING_KEY], {});
+  }
+
+  // 本文・完了状態が変わらず期限だけを変更した場合も、その変更を検知して送信する
+  // （text/doneだけを比較していた旧実装では、期限だけの変更が送られなかった）。
+  {
+    const runtime = createRuntime({
+      local: { __storage_mode__: "local", __google_tasks_sync_enabled__: true }
+    });
+    const dueAt = new Date(2026, 7, 1).getTime();
+    runtime.change("local", "200", {
+      subject: "英語",
+      tasks: [{ id: "t1", text: "レポート", done: false, dueAt }]
+    });
+    await settle();
+    assert.deepEqual(runtime.calls.create, [{ listId: "list-英語", title: "レポート", done: false }]);
+    const linked = runtime.localData["200"].tasks[0];
+
+    runtime.change("local", "200", {
+      subject: "英語",
+      tasks: [{ ...linked, dueAt: dueAt + 24 * 60 * 60 * 1000 }]
+    });
+    await settle();
+    assert.equal(runtime.calls.update.length, 1, "期限だけの変更でも更新操作を送る");
+    assert.equal(runtime.calls.update[0].task.dueAt, dueAt + 24 * 60 * 60 * 1000);
+
+    runtime.change("local", "200", { subject: "英語", tasks: [{ ...linked, dueAt: 0 }] });
+    await settle();
+    assert.equal(runtime.calls.update.length, 2, "期限を削除する変更も送る");
+    assert.equal(runtime.calls.update[1].task.dueAt, 0);
   }
 
   // ID書き戻しは最新値を再読込し、同時追加された兄弟タスクを消さない。
