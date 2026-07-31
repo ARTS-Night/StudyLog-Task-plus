@@ -402,6 +402,26 @@
         padding: 2px 4px;
       }
 
+      .lms-due-presets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        width: 100%;
+      }
+
+      .lms-due-preset-btn {
+        font-size: 11px;
+        padding: 2px 8px;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        background: #fff;
+        cursor: pointer;
+      }
+
+      .lms-due-preset-btn:hover {
+        background: #f0f0f0;
+      }
+
       .lms-sort-row {
         display: flex;
         gap: 6px;
@@ -1132,7 +1152,30 @@
     timeInput.hidden = true;
     timeLabel.append(timeCheckbox, document.createTextNode("時刻も指定"), timeInput);
 
-    row.append(dateLabel, timeLabel);
+    const presetRow = document.createElement("div");
+    presetRow.className = "lms-due-presets";
+    [
+      ["明日", (date) => date.setDate(date.getDate() + 1)],
+      ["あさって", (date) => date.setDate(date.getDate() + 2)],
+      ["1週間後", (date) => date.setDate(date.getDate() + 7)],
+      ["2週間後", (date) => date.setDate(date.getDate() + 14)],
+      ["1か月後", (date) => date.setMonth(date.getMonth() + 1)]
+    ].forEach(([label, apply]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "lms-due-preset-btn";
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        const target = new Date();
+        apply(target);
+        dateInput.value = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+        dateCheckbox.checked = true;
+        dateInput.hidden = false;
+        timeCheckbox.disabled = false;
+      });
+      presetRow.appendChild(button);
+    });
+    row.append(dateLabel, timeLabel, presetRow);
 
     function todayValue() {
       const now = new Date();
