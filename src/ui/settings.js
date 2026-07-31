@@ -239,6 +239,7 @@
         driveAccount.textContent = "ログインしていません";
         driveSubstatus.textContent = "「Google ドライブで共有」を使うにはログインしてください";
         driveError.hidden = true;
+        googleTasksCheckbox.checked = false;
         googleTasksSubstatus.textContent = "上のGoogleログインが必要です";
         googleTasksError.hidden = true;
         googleTasksBackfillButton.hidden = true;
