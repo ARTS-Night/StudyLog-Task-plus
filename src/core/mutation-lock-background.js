@@ -10,6 +10,13 @@ importScripts(
   "../sync/google-tasks/google-tasks-mirror-background.js"
 );
 
+// 新規インストールだけ保存先の既定を「この端末のみ（ローカル保存）」にする。
+// 既存ユーザーはMODE_KEY未設定のまま既定のsync（同期データを見失わないための既定値）で動き続ける。
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason !== "install") return;
+  chrome.storage.local.set({ __storage_mode__: "local" });
+});
+
 // content script と拡張機能ページは Web Locks の共有範囲が異なるため、
 // runtime Port を Service Worker に集約し、拡張機能全体で1本の FIFO にする。
 (function () {
