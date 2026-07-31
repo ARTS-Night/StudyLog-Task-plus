@@ -50,8 +50,13 @@
   }
 
   async function login() {
-    // 以前の同意・キャッシュ済みトークンが残っていると、Chromeにログイン中の
-    // アカウントで無言のまま完了してしまう。ログイン操作のたびに一度破棄してから
+    // キャッシュ済みトークンがあればそのまま使ってログイン状態を維持する。
+    // 別アカウントへ切り替えたい場合は switchAccount() を使う。
+    await getToken(true);
+  }
+
+  async function switchAccount() {
+    // 別アカウントでログインするため、現在のキャッシュ済みトークンを先に破棄してから
     // 新規に要求し、Google側のアカウント選択・同意画面を毎回出す。
     try {
       await logout();
@@ -119,6 +124,7 @@
     getToken,
     authFetch,
     login,
+    switchAccount,
     logout,
     isLoggedIn,
     getUserEmail,

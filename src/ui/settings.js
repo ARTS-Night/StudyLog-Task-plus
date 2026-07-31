@@ -197,6 +197,7 @@
   const driveChip = document.getElementById("drive-chip");
   const driveError = document.getElementById("drive-error");
   const driveLoginButton = document.getElementById("btn-drive-login");
+  const driveSwitchAccountButton = document.getElementById("btn-drive-switch-account");
   const driveLogoutButton = document.getElementById("btn-drive-logout");
   const driveSyncButtons = document.getElementById("drive-sync-buttons");
   const driveBackupButton = document.getElementById("btn-drive-backup");
@@ -228,6 +229,7 @@
   function refreshDriveStatus() {
     GoogleAuth.isLoggedIn().then((loggedIn) => {
       driveLoginButton.hidden = loggedIn;
+      driveSwitchAccountButton.hidden = !loggedIn;
       driveLogoutButton.hidden = !loggedIn;
       driveSyncButtons.hidden = !loggedIn;
       googleTasksCheckbox.disabled = !loggedIn;
@@ -283,6 +285,19 @@
       .catch((error) => showStatus(`ログインできませんでした: ${error.message}`))
       .finally(() => {
         driveLoginButton.disabled = false;
+      });
+  });
+
+  driveSwitchAccountButton.addEventListener("click", () => {
+    driveSwitchAccountButton.disabled = true;
+    GoogleAuth.switchAccount()
+      .then(() => {
+        showStatus("別のGoogleアカウントでログインしました");
+        refreshDriveStatus();
+      })
+      .catch((error) => showStatus(`ログインできませんでした: ${error.message}`))
+      .finally(() => {
+        driveSwitchAccountButton.disabled = false;
       });
   });
 

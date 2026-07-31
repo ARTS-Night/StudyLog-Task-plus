@@ -65,10 +65,12 @@ function createPortPair(name) {
 
 function createRuntime() {
   const onConnect = new FakeEvent();
+  const onInstalled = new FakeEvent();
   const clientPorts = [];
   return {
     lastError: null,
     onConnect,
+    onInstalled,
     clientPorts,
     connect(options) {
       const pair = createPortPair(options && options.name);
