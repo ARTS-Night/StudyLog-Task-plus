@@ -74,9 +74,30 @@ async function main() {
     assert.deepEqual(JSON.parse(calls[1].options.body), {
       title: "修正版",
       status: "needsAction",
-      completed: null
+      completed: null,
+      due: null
     });
     assert.match(calls[1].url, /list%2F1\/tasks\/task%2F1$/);
+  }
+
+  // 期限(dueAt)は日付部分だけをRFC3339のUTC 00:00として送る（時刻はGoogle Tasksが無視するため）。
+  // 未設定・編集で削除した場合はdue: nullを送って先方の期限も消す。
+  {
+    const { sync, calls } = createRuntime(async (url, options) =>
+      response(200, options.method === "POST" ? { id: "task-2" } : {}));
+    const dueAt = new Date(2026, 7, 1, 9, 30).getTime(); // 2026-08-01 09:30 ローカル
+    await sync.createTask("list/1", "提出物", false, dueAt);
+    assert.deepEqual(JSON.parse(calls[0].options.body), {
+      title: "提出物",
+      status: "needsAction",
+      due: "2026-08-01T00:00:00.000Z"
+    });
+
+    await sync.createTask("list/1", "期限なし", false, 0);
+    assert.equal("due" in JSON.parse(calls[1].options.body), false, "期限なしの新規作成はdueを送らない");
+
+    await sync.updateTask("list/1", "task/2", { title: "期限削除", done: false, dueAt: 0 });
+    assert.equal(JSON.parse(calls[2].options.body).due, null, "期限を削除した編集はdue:nullを送る");
   }
 
   // DELETEの404は「既に削除済み」として成功扱いにする

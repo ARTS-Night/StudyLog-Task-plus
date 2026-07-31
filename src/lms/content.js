@@ -351,7 +351,12 @@
 
       .lms-task-created,
       .lms-task-completed,
+      .lms-task-due,
       .lms-preview-task-created {
+        display: block;
+        /* 幅が極端に狭くなった時に1文字ごとに折り返り縦書き状に見えることがあるため、
+           日付・時刻の短いラベルは常に折り返さない */
+        white-space: nowrap;
         font-size: 12px;
         line-height: 1.4;
         text-decoration: none;

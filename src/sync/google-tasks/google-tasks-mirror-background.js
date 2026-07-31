@@ -174,12 +174,14 @@
   async function createWithListRetry(operation) {
     let listId = await resolveTaskList(operation.classId, operation.subject);
     try {
-      const taskId = await GoogleTasksSync.createTask(listId, operation.text, operation.done === true);
+      const taskId = await GoogleTasksSync.createTask(
+        listId, operation.text, operation.done === true, operation.dueAt);
       return { listId, taskId };
     } catch (error) {
       if (errorStatus(error) !== 404) throw error;
       listId = await resolveTaskList(operation.classId, operation.subject, listId);
-      const taskId = await GoogleTasksSync.createTask(listId, operation.text, operation.done === true);
+      const taskId = await GoogleTasksSync.createTask(
+        listId, operation.text, operation.done === true, operation.dueAt);
       return { listId, taskId };
     }
   }
@@ -256,7 +258,8 @@
     try {
       await GoogleTasksSync.updateTask(operation.googleTaskListId, operation.googleTaskId, {
         title: operation.text,
-        done: operation.done === true
+        done: operation.done === true,
+        dueAt: operation.dueAt
       });
       // create 成功後のID書き戻しだけが失敗した状態から update へ上書きされた場合も、
       // API更新と同じ処理内でリンクを確定する。
@@ -283,7 +286,8 @@
       const replacementTaskId = await GoogleTasksSync.createTask(
         replacementListId,
         operation.text,
-        operation.done === true
+        operation.done === true,
+        operation.dueAt
       );
       const attachOnly = {
         type: "create",
@@ -292,6 +296,7 @@
         subject: operation.subject,
         text: operation.text,
         done: operation.done === true,
+        dueAt: operation.dueAt,
         googleTaskListId: replacementListId,
         googleTaskId: replacementTaskId
       };
@@ -359,7 +364,10 @@
     const actions = [];
     for (const [taskId, task] of newTasks) {
       const previous = oldTasks.get(taskId);
-      if (previous && previous.text === task.text && previous.done === task.done) continue;
+      const dueAt = TaskLifecycle.normalizeTimestamp(task.dueAt);
+      const previousDueAt = previous ? TaskLifecycle.normalizeTimestamp(previous.dueAt) : 0;
+      if (previous && previous.text === task.text && previous.done === task.done
+        && previousDueAt === dueAt) continue;
       const existing = pending[`${classId}:${taskId}`];
       const linkedListId = validId(task.googleTaskListId) ? task.googleTaskListId
         : existing && validId(existing.googleTaskListId) ? existing.googleTaskListId : "";
@@ -370,7 +378,8 @@
         taskId,
         subject,
         text: typeof task.text === "string" ? task.text : "",
-        done: task.done === true
+        done: task.done === true,
+        dueAt
       };
       const operation = validId(linkedListId) && validId(linkedTaskId)
         ? { type: "update", ...base, googleTaskListId: linkedListId, googleTaskId: linkedTaskId }
@@ -452,7 +461,8 @@
           taskId: task.id,
           subject,
           text: typeof task.text === "string" ? task.text : "",
-          done: task.done === true
+          done: task.done === true,
+          dueAt: TaskLifecycle.normalizeTimestamp(task.dueAt)
         }));
       });
     });
