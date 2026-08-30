@@ -2,6 +2,9 @@
 
 岩崎学園の「スタログ」へ、授業ごとのタスク（提出物・忘れ物など）管理機能を追加する非公式の Chrome 拡張機能です。Chrome 上の表示名は「スタログ授業メモ」。
 
+### 拡張のリンクはこちら↓
+- https://chromewebstore.google.com/detail/nkdapcjaljmbeiphaakejiahmoabjfnm?utm_source=item-share-cb
+
 > [!NOTE]
 > 岩崎学園のスタログ専用に作られた非公式の拡張機能です。利用にはスタログへログインできるアカウントが必要です。
 
